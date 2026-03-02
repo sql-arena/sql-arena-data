@@ -1,4 +1,4 @@
-tpc-ds/
-tpc-h/
+tpcds/
+tpch/
 job/
 *.duckdb
