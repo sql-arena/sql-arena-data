@@ -1,0 +1,30 @@
+# flowmachine and its pinned dependencies from FlowKit flowmachine/Pipfile.lock at the same commit, for render_queries.py render
+flowmachine @ git+https://github.com/Flowminder/FlowKit@24d88247d57987fe33f6b8915540d7bf09b58033#subdirectory=flowmachine
+apispec==6.8.1
+apispec-oneofschema==3.0.1
+cachetools==6.2.2
+finist==0.1.2
+get-secret-or-env-var==0.0.2
+greenlet==3.2.4
+marshmallow==3.26.1
+marshmallow-oneofschema==3.2.0
+networkx==3.6.1
+numpy==2.3.5
+packaging==24.2
+pandas==2.3.3
+pglast==6.3
+psycopg2-binary==2.9.11
+python-dateutil==2.9.0.post0
+python-louvain==0.16
+python-rapidjson==1.23
+pytz==2025.2
+pyyaml==6.0.3
+pyzmq==27.1.0
+redis==7.1.0
+setuptools==78.1.1
+shapely==2.1.2
+six==1.17.0
+sqlalchemy==2.0.44
+structlog==25.5.0
+typing-extensions==4.15.0
+tzdata==2025.2

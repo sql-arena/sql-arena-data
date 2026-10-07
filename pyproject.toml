@@ -13,3 +13,8 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "sqlglot>=30.21.0",
+]
