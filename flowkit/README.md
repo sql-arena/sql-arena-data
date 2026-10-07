@@ -5,7 +5,7 @@ Synthetic mobile operator call detail records (CDR) in the schema of
 `flowmachine`. Flowminder uses FlowKit to analyse real operator CDRs for humanitarian work. That gives
 the dataset a real-world query workload over data we can generate at any scale.
 
-Status: the generator is in `flowkit/flowkit.py`; the query set is not rendered yet. Research notes are in
+Status: the generator is in `flowkit/flowkit.py` and the query set in `flowkit/sf1/queries/`. Research notes are in
 [CANDIDATE_DATASETS.md](../CANDIDATE_DATASETS.md#cdr-query-sets).
 
 ## Licence
@@ -82,23 +82,43 @@ uv run generate.py flowkit --sf 1 --days 7 --no-upload
 
 Event tables are generated in chunks of consecutive days (`--days-per-chunk`, default about one 500 MB file each), sorted by `datetime`, and resume per chunk through `_manifest.json`. The static tables are single files. Event volume grows linearly in subscribers x days: SF1 for 7 days takes under 2 minutes on a laptop.
 
-## Query plan
+## Queries
 
-The queries are rendered once with `flowmachine`, by building each query object with fixed parameters
-and calling `get_query()` against a FlowDB test container (`flowminder/flowdb-testdata`). Upstream checks
-in only 16 rendered snapshots (`*_sql.approved.txt`, mostly `daily_location` and `event_count`).
+`flowkit/sf1/queries/q01.sql` to `q32.sql` are 32 FlowAPI queries rendered by FlowKit's `flowmachine`. The specs are in `flowkit/query_specs.py`, modelled on flowmachine's `test_query_object_construction.py`. They cover:
 
-The rendered SQL is then rewritten for portability:
+- daily, modal, majority and most-frequent locations
+- event, subscriber and network-object counts
+- flows and OD matrices
+- spatial aggregates of radius of gyration, nocturnal events, subscriber degree, event count, unique locations and pareto interactions
+- handset and topup amount and balance
+- displacement, active periods, histograms, unique visitors, unmoving counts and location introversion
 
-- PostGIS `st_within` cell-to-region joins become joins to `cell_region`.
-- Postgres-only syntax (`DISTINCT ON`, `::` casts) becomes standard SQL.
-- Tables are qualified with the dataset namespace.
+Each file's header carries the MPL-2.0 notice, the FlowKit commit and the FlowAPI spec.
 
-Candidate features cover both subscriber level and aggregates:
+**Extraction** (once, then committed). `flowkit/render_queries.py` renders the specs with flowmachine at commit `24d88247` against `flowminder/flowdb-testdata:1.34.0`. flowmachine's pinned dependencies are in `flowkit/render_requirements.txt`, taken from FlowKit's `Pipfile.lock`. The script then rewrites the Postgres/PostGIS SQL with sqlglot:
 
-- Subscriber level: daily, modal, home and last location, radius of gyration, event counts,
-  subscriber degree, contact balance, nocturnal events, entropy, interevent intervals, call durations,
-  topup amounts and handset stats.
-- Aggregates: unique subscriber counts, total network objects, flows and OD matrices.
+- `st_within` cell-to-region joins become joins to `cell_region`.
+- `DISTINCT ON` becomes `ROW_NUMBER`. `mode() WITHIN GROUP` becomes a count with `ROW_NUMBER`, with ties going to the lowest value as in Postgres.
+- The ±infinity service-date guards become `IS NULL OR`. `st_x`/`st_y` become `longitude`/`latitude`.
+- `to_char(t, 'HH24:MI')` becomes minutes since midnight. Named `WINDOW`s are inlined.
+- Histogram `numrange`/`generate_series` becomes a `VALUES` list of bounds.
+- Radius of gyration's `array_agg`/`unnest` becomes window averages. PostGIS geography distance becomes haversine.
+- FlowDB-only columns are dropped, using `flowkit/sf1/schema/`. Tables are qualified with the namespace.
 
-Queries go in `flowkit/<scale>/queries/` and the schema in `flowkit/<scale>/schema/`, following the root README.
+**Verification.** On FlowDB's own test data, each original was run in Postgres and its rewrite in DuckDB, over a mirror with `cell_region` computed by `st_within`. 30 of 32 return identical results. q13 (radius of gyration) and q22 (displacement) differ by at most 0.10%, which is haversine against PostGIS's spheroid. All 32 run on generated SF1 data (7 days) in DuckDB, in 3.5 s or less each.
+
+**Caveats.**
+
+- Run with the session time zone set to UTC. FlowKit compares the `TIMESTAMPTZ` columns with plain strings such as `'2016-01-01 00:00:00'`.
+- The rewrite assumes one version per cell, because `cell_region` is keyed by `location_id`. The generator only writes version 0.
+- q21 (topup balance) keeps `EXTRACT(EPOCH FROM ts - LAG(...))`, which not every engine supports.
+- q24 and q25 apply FlowKit's privacy suppression and return a single row of NULLs when any bin has fewer than 15 subscribers. That happens at SF1.
+- q22's distance matrix cross-joins all distinct cell points, so it is quadratic in cells: 1M pairs at SF1 (1,000 cells), about 10^10 at SF100.
+- Not included:
+  - `meaningful_locations` needs FlowDB's clustering function and labelled polygons.
+  - Random sampling (`TABLESAMPLE`) is left out.
+  - `visited_most_days` fails to render in flowmachine at this commit.
+
+## Schema
+
+The DDL is checked in at `flowkit/sf<N>/schema/` (one `<table>.sql` per table, plus `keys.sql`) and uploaded unchanged with each run.
