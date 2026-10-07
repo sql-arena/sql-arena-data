@@ -1,0 +1,2 @@
+/* Public BI Motos 27 */
+SELECT SUM("Motos_2"."InversionUS") AS "sum:InversionUS:ok",   CAST(EXTRACT(YEAR FROM "Motos_2"."FECHA") AS BIGINT) AS "yr:FECHA:ok" FROM publicbi."Motos_2" WHERE ((CAST(EXTRACT(YEAR FROM "Motos_2"."FECHA") AS BIGINT) >= 2010) AND (CAST(EXTRACT(YEAR FROM "Motos_2"."FECHA") AS BIGINT) <= 2015) AND ("Motos_2"."Categoria" = 'MOTOCICLETAS')) GROUP BY "yr:FECHA:ok";

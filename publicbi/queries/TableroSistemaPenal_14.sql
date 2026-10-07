@@ -1,0 +1,2 @@
+/* Public BI TableroSistemaPenal 14 */
+SELECT "TableroSistemaPenal_5"."PAÍS" AS "PAÍS",   "TableroSistemaPenal_5"."SENTENCIA" AS "SENTENCIA",   COUNT(DISTINCT "TableroSistemaPenal_5"."ID_EVENTO") AS "ctd:ID_EVENTO:ok",   CAST(EXTRACT(YEAR FROM "TableroSistemaPenal_5"."FECHA AUDIENCIA") AS BIGINT) AS "yr:FECHA AUDIENCIA:ok" FROM publicbi."TableroSistemaPenal_5" WHERE ('Volver a Tramitacion Inicial' = 'Volver a Tramitacion Inicial') GROUP BY "TableroSistemaPenal_5"."PAÍS",   "TableroSistemaPenal_5"."SENTENCIA", "yr:FECHA AUDIENCIA:ok";

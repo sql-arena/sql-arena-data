@@ -1,0 +1,2 @@
+/* Public BI Taxpayer 3 */
+SELECT "Taxpayer_10"."nppes_provider_city" AS "nppes_provider_city" FROM publicbi."Taxpayer_10" WHERE (("Taxpayer_10"."hcpcs_description" = 'Initial hospital care') AND ("Taxpayer_10"."nppes_provider_state" = 'WA')) GROUP BY "Taxpayer_10"."nppes_provider_city";

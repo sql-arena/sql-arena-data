@@ -1,0 +1,2 @@
+/* Public BI TableroSistemaPenal 19 */
+SELECT "TableroSistemaPenal_5"."SENTENCIA" AS "SENTENCIA",   SUM(CAST("TableroSistemaPenal_5"."Number of Records" AS BIGINT)) AS "sum:Number of Records:ok" FROM publicbi."TableroSistemaPenal_5" WHERE (("TableroSistemaPenal_5"."PAÍS" = 'PAÍS') AND (CAST(EXTRACT(YEAR FROM "TableroSistemaPenal_5"."FECHA AUDIENCIA") AS BIGINT) = 2010)) GROUP BY "TableroSistemaPenal_5"."SENTENCIA";

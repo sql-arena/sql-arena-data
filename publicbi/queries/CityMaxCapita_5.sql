@@ -1,0 +1,2 @@
+/* Public BI CityMaxCapita 5 */
+SELECT "CityMaxCapita_1"."City" AS "City",   MAX("CityMaxCapita_1"."Keyword") AS "TEMP(attr:Keyword:nk)(2694177860)(0)",   MIN("CityMaxCapita_1"."Keyword") AS "TEMP(attr:Keyword:nk)(4040898713)(0)" FROM publicbi."CityMaxCapita_1" WHERE ("CityMaxCapita_1"."Keyword" = 'bitch') GROUP BY "CityMaxCapita_1"."City";

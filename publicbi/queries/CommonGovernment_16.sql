@@ -1,0 +1,2 @@
+/* Public BI CommonGovernment 16 */
+SELECT "CommonGovernment_4"."level2_category" AS "Level2 Category (copy)" FROM publicbi."CommonGovernment_4" GROUP BY "CommonGovernment_4"."level2_category";

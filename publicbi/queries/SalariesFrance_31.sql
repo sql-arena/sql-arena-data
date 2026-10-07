@@ -1,0 +1,2 @@
+/* Public BI SalariesFrance 31 */
+SELECT SUM("SalariesFrance_7"."SALAIRE_VF") AS "TEMP(Calculation_393783518251319297)(57485518)(0)",   COUNT("SalariesFrance_7"."SALAIRE_VF") AS "TEMP(Calculation_393783518251319297)(879651027)(0)" FROM publicbi."SalariesFrance_7" HAVING (COUNT(1) > 0);

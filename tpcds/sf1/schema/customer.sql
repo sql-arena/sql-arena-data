@@ -1,0 +1,20 @@
+CREATE TABLE tpcds_sf1.customer (
+    c_customer_sk BIGINT NOT NULL,
+    c_customer_id VARCHAR NOT NULL,
+    c_current_cdemo_sk BIGINT NULL,
+    c_current_hdemo_sk BIGINT NULL,
+    c_current_addr_sk BIGINT NULL,
+    c_first_shipto_date_sk BIGINT NULL,
+    c_first_sales_date_sk BIGINT NULL,
+    c_salutation VARCHAR NULL,
+    c_first_name VARCHAR NULL,
+    c_last_name VARCHAR NULL,
+    c_preferred_cust_flag VARCHAR NULL,
+    c_birth_day BIGINT NULL,
+    c_birth_month BIGINT NULL,
+    c_birth_year BIGINT NULL,
+    c_birth_country VARCHAR NULL,
+    c_login VARCHAR NULL,
+    c_email_address VARCHAR NULL,
+    c_last_review_date_sk INT NULL
+);

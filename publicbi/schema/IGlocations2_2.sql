@@ -1,0 +1,22 @@
+CREATE TABLE publicbi."IGlocations2_2" (
+    "Number of Records" INT NULL,
+    caption VARCHAR NOT NULL,
+    city VARCHAR NOT NULL,
+    country VARCHAR NOT NULL,
+    created_time TIMESTAMP NOT NULL,
+    id INT NOT NULL,
+    latitude DECIMAL(10,8) NOT NULL,
+    like_count INT NOT NULL,
+    link VARCHAR NOT NULL,
+    longitude DECIMAL(11,8) NOT NULL,
+    media_type VARCHAR NOT NULL,
+    media_url VARCHAR NOT NULL,
+    "State (copy)" VARCHAR NOT NULL,
+    state VARCHAR NOT NULL,
+    username VARCHAR NOT NULL,
+    "Calculation_1750724145742463" DECIMAL(5,2) NOT NULL,
+    "Calculation_3650724144057954" VARCHAR NOT NULL,
+    "Calculation_4370724142342227" VARCHAR NULL,
+    "Calculation_8090724143600502" VARCHAR NOT NULL,
+    "Calculation_9330724145728972" DECIMAL(4,2) NOT NULL
+);

@@ -1,26 +1,30 @@
-# Docker Infrastructure
+# Generator Container
 
-This directory contains Dockerfiles and configurations to start databases for benchmarking.
+One image runs every generator in this repo. Build it from the repo root:
 
-## PostgreSQL
-- `postgresql/` - PostgreSQL configuration and setup (includes a benchmark-tuned config based on `postgres:latest`).
-
-### Build
 ```bash
-cd docker/postgresql
-docker build -t sql-arena-postgres:latest .
+docker build -f docker/Dockerfile -t sql-arena-data .
 ```
 
-### Run (example)
+Arguments are passed to `generate.py`:
+
 ```bash
-docker run --rm \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_DB=bench \
-  -p 5432:5432 \
-  sql-arena-postgres:latest
+docker run --rm -v /mnt/data:/opt/sql-arena-data/temp sql-arena-data tpch --sf 1000 --children 100
+docker run --rm -v /mnt/data:/opt/sql-arena-data/temp sql-arena-data job --no-upload
 ```
 
-Notes:
-- The image uses unsafe settings for durability (e.g., `fsync=off`) to maximize performance. For benchmarking only.
-- To customize memory-related settings, edit `docker/postgresql/conf/benchmark.conf` and rebuild.
+Mount a large local disk on `/opt/sql-arena-data/temp`. It holds downloads, parts waiting for upload and DuckDB spill files.
+
+## Credentials
+
+The image sets `AWS_PROFILE_NAME=""`, so boto3 uses the default credential chain. On EC2 that is the instance role, which needs write access to `s3://sql-arena`. To run locally with the `sql-arena` SSO profile:
+
+```bash
+aws sso login --profile sql-arena
+docker run --rm -v ~/.aws:/root/.aws -e AWS_PROFILE_NAME=sql-arena \
+  -v "$PWD/temp:/opt/sql-arena-data/temp" sql-arena-data tpch --sf 1
+```
+
+Mount `~/.aws` writable: botocore saves the refreshed SSO token to `~/.aws/sso/cache`, and fails on a read-only mount once the token needs a refresh.
+
+The bucket is in `eu-north-1`. Run the instance there to avoid cross-region transfer.

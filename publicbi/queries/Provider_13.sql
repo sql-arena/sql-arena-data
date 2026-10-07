@@ -1,0 +1,2 @@
+/* Public BI Provider 13 */
+SELECT "Provider_8"."nppes_provider_first_name" AS "nppes_provider_first_name" FROM publicbi."Provider_8" WHERE (("Provider_8"."nppes_provider_state" = 'NE') AND ("Provider_8"."provider_type" = 'Diagnostic Radiology')) GROUP BY "Provider_8"."nppes_provider_first_name";

@@ -1,0 +1,2 @@
+/* Public BI Provider 29 */
+SELECT "Provider_8"."nppes_provider_street1" AS "nppes_provider_street1" FROM publicbi."Provider_8" WHERE (("Provider_8"."nppes_provider_city" = 'LINCOLN') AND ("Provider_8"."nppes_provider_state" = 'RI') AND ("Provider_8"."provider_type" = 'Internal Medicine')) GROUP BY "Provider_8"."nppes_provider_street1";

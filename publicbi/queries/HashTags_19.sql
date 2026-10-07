@@ -1,0 +1,2 @@
+/* Public BI HashTags 19 */
+SELECT COUNT(DISTINCT "HashTags_1"."twitter#user#screen_name") AS "usr:Calculation_4270207211322417:ok" FROM publicbi."HashTags_1" HAVING (COUNT(1) > 0);

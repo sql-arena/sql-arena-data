@@ -1,0 +1,21 @@
+CREATE TABLE tpcds_sf1.promotion (
+    p_promo_sk BIGINT NOT NULL,
+    p_promo_id VARCHAR NOT NULL,
+    p_start_date_sk BIGINT NULL,
+    p_end_date_sk BIGINT NULL,
+    p_item_sk BIGINT NULL,
+    p_cost DECIMAL(15,2) NULL,
+    p_response_target BIGINT NULL,
+    p_promo_name VARCHAR NULL,
+    p_channel_dmail VARCHAR NULL,
+    p_channel_email VARCHAR NULL,
+    p_channel_catalog VARCHAR NULL,
+    p_channel_tv VARCHAR NULL,
+    p_channel_radio VARCHAR NULL,
+    p_channel_press VARCHAR NULL,
+    p_channel_event VARCHAR NULL,
+    p_channel_demo VARCHAR NULL,
+    p_channel_details VARCHAR NULL,
+    p_purpose VARCHAR NULL,
+    p_discount_active VARCHAR NULL
+);

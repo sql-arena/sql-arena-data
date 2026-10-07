@@ -1,0 +1,2 @@
+/* Public BI Rentabilidad 20 */
+SELECT "Rentabilidad_1"."Ruta de Venta" AS "Ruta de Venta",   (CAST(SUM("Rentabilidad_1"."IN") AS double) / NULLIF(SUM("Rentabilidad_1"."CF"),0)) AS "usr:Calculation_0070818164712315:ok" FROM publicbi."Rentabilidad_1" WHERE (("Rentabilidad_1"."Figura" = 'Preventa On Premise') AND ("Rentabilidad_1"."Sede Foraneo Sintec" = 'Sede') AND ("Rentabilidad_1"."Zona" = 'OC')) GROUP BY "Rentabilidad_1"."Ruta de Venta";

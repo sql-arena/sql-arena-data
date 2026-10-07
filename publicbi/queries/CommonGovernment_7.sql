@@ -1,0 +1,2 @@
+/* Public BI CommonGovernment 7 */
+SELECT "CommonGovernment_13"."naics_name" AS "naics_name",   "CommonGovernment_13"."prod_or_serv_code_desc" AS "prod_or_serv_code_desc",   SUM("CommonGovernment_13"."obligatedamount") AS "sum:obligatedamount:ok",   "CommonGovernment_13"."vend_vendorname" AS "vend_vendorname" FROM publicbi."CommonGovernment_13" GROUP BY "CommonGovernment_13"."naics_name",   "CommonGovernment_13"."prod_or_serv_code_desc", "CommonGovernment_13"."vend_vendorname";

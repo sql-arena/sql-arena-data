@@ -1,0 +1,2 @@
+/* Public BI TableroSistemaPenal 23 */
+SELECT "TableroSistemaPenal_6"."PAÍS" AS "PAÍS",   "TableroSistemaPenal_6"."TIP TRIB" AS "TIP TRIB",   SUM(CAST("TableroSistemaPenal_6"."Number of Records" AS BIGINT)) AS "sum:Number of Records:ok",   CAST(EXTRACT(YEAR FROM "TableroSistemaPenal_6"."FECHA AUDIENCIA") AS BIGINT) AS "yr:FECHA AUDIENCIA:ok" FROM publicbi."TableroSistemaPenal_6" GROUP BY "TableroSistemaPenal_6"."PAÍS",   "TableroSistemaPenal_6"."TIP TRIB", "yr:FECHA AUDIENCIA:ok";

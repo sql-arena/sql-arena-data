@@ -1,4 +1,6 @@
-tpcds/
-tpch/
-job/
+temp/
+.venv/
+__pycache__/
+.DS_Store
 *.duckdb
+*.swp

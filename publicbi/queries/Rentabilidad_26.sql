@@ -1,0 +1,2 @@
+/* Public BI Rentabilidad 26 */
+SELECT "Rentabilidad_6"."Implementación Venta" AS "Implementación Venta" FROM publicbi."Rentabilidad_6" WHERE (("Rentabilidad_6"."Figura" = 'Preventa On Premise') AND ("Rentabilidad_6"."Sede Foraneo Sintec" = 'Sede') AND ("Rentabilidad_6"."Zona" = 'OC')) GROUP BY "Rentabilidad_6"."Implementación Venta";

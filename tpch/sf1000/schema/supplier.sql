@@ -1,0 +1,9 @@
+CREATE TABLE tpch_sf1000.supplier (
+    s_suppkey BIGINT NOT NULL,
+    s_name VARCHAR NOT NULL,
+    s_address VARCHAR NOT NULL,
+    s_nationkey INT NOT NULL,
+    s_phone VARCHAR NOT NULL,
+    s_acctbal DECIMAL(15,2) NOT NULL,
+    s_comment VARCHAR NOT NULL
+);

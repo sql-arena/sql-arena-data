@@ -1,0 +1,2 @@
+/* Public BI TrainsUK1 5 */
+SELECT "TrainsUK1_4"."v_Headcode Description" AS "v_Headcode Description" FROM publicbi."TrainsUK1_4" WHERE ((NOT ("TrainsUK1_4"."Timetable" IN ('', 'Timetable'))) AND ("TrainsUK1_4"."Operator" = 'EB')) GROUP BY "TrainsUK1_4"."v_Headcode Description";

@@ -1,0 +1,2 @@
+/* Public BI Provider 24 */
+SELECT "Provider_8"."nppes_provider_last_org_name" AS "nppes_provider_last_org_name" FROM publicbi."Provider_8" WHERE (("Provider_8"."nppes_provider_state" = 'WA') AND ("Provider_8"."provider_type" = 'Nephrology')) GROUP BY "Provider_8"."nppes_provider_last_org_name";

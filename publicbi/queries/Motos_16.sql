@@ -1,0 +1,2 @@
+/* Public BI Motos 16 */
+SELECT "Motos_2"."Medio" AS "Medio",   SUM("Motos_2"."InversionUS") AS "sum:Calculation_0061002123102817:ok",   CAST(EXTRACT(YEAR FROM "Motos_2"."FECHA") AS BIGINT) AS "yr:FECHA:ok" FROM publicbi."Motos_2" WHERE (("Motos_2"."Medio" = 'RADIO') AND (CAST(EXTRACT(YEAR FROM "Motos_2"."FECHA") AS BIGINT) = 2015) AND ("Motos_2"."Categoria" = 'MOTOCICLETAS')) GROUP BY "Motos_2"."Medio",   "yr:FECHA:ok";

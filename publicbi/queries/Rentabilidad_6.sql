@@ -1,0 +1,2 @@
+/* Public BI Rentabilidad 6 */
+SELECT "Rentabilidad_1"."Figura" AS "Figura",   "Rentabilidad_1"."Implementación Venta" AS "Implementación Venta",   "Rentabilidad_1"."Locación" AS "Locación",   "Rentabilidad_1"."Sede Foraneo Sintec" AS "Sede Foraneo Sintec",   "Rentabilidad_1"."Zona" AS "Zona" FROM publicbi."Rentabilidad_1" GROUP BY "Rentabilidad_1"."Figura",   "Rentabilidad_1"."Implementación Venta",   "Rentabilidad_1"."Locación",   "Rentabilidad_1"."Sede Foraneo Sintec",   "Rentabilidad_1"."Zona";

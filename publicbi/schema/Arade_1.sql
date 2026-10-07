@@ -1,0 +1,13 @@
+CREATE TABLE publicbi."Arade_1" (
+    "F1" VARCHAR NOT NULL,
+    "F2" VARCHAR NOT NULL,
+    "F3" TIMESTAMP NOT NULL,
+    "F4" DECIMAL(8,4) NOT NULL,
+    "F5" DECIMAL(8,6) NOT NULL,
+    "F6" VARCHAR NULL,
+    "F7" VARCHAR NULL,
+    "F8" DECIMAL(9,6) NOT NULL,
+    "F9" DECIMAL(9,6) NOT NULL,
+    "Number of Records" INT NOT NULL,
+    "WNET (bin)" INT NOT NULL
+);

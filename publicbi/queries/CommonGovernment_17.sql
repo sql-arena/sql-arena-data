@@ -1,0 +1,2 @@
+/* Public BI CommonGovernment 17 */
+SELECT "CommonGovernment_5"."funding_agency_name" AS "funding_agency_name" FROM publicbi."CommonGovernment_5" GROUP BY "CommonGovernment_5"."funding_agency_name";
