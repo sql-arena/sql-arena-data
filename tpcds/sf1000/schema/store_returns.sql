@@ -1,0 +1,22 @@
+CREATE TABLE tpcds_sf1000.store_returns (
+    sr_returned_date_sk BIGINT NULL,
+    sr_return_time_sk BIGINT NULL,
+    sr_item_sk BIGINT NOT NULL,
+    sr_customer_sk BIGINT NULL,
+    sr_cdemo_sk BIGINT NULL,
+    sr_hdemo_sk BIGINT NULL,
+    sr_addr_sk BIGINT NULL,
+    sr_store_sk BIGINT NULL,
+    sr_reason_sk BIGINT NULL,
+    sr_ticket_number BIGINT NOT NULL,
+    sr_return_quantity BIGINT NULL,
+    sr_return_amt DECIMAL(7,2) NULL,
+    sr_return_tax DECIMAL(7,2) NULL,
+    sr_return_amt_inc_tax DECIMAL(7,2) NULL,
+    sr_fee DECIMAL(7,2) NULL,
+    sr_return_ship_cost DECIMAL(7,2) NULL,
+    sr_refunded_cash DECIMAL(7,2) NULL,
+    sr_reversed_charge DECIMAL(7,2) NULL,
+    sr_store_credit DECIMAL(7,2) NULL,
+    sr_net_loss DECIMAL(7,2) NULL
+);
