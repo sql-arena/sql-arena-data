@@ -125,7 +125,78 @@ the queries would have to be written by hand: hourly and daily rollups per squar
 country-code mix (roaming), origin-destination flows from MI to MI, and joins to the grid and
 weather.
 
+### CDR generators
+
+Searched GitHub and the literature on 2026-10-07 for synthetic CDR generators that can build very
+large tables. None is deterministic, parallel, scalable to TB size and permissively licensed all at once,
+and none ships SQL queries.
+
+| Generator | Language / engine | Scaling | Deterministic | Licence | Verdict |
+|---|---|---|---|---|---|
+| [whetherharder/cdr-generator](https://github.com/whetherharder/cdr-generator) | Python, multiprocess (subscriber sharding) | Subscribers x days. The README targets 10M+ subscribers and billions of rows, but the current baseline is ~1,500 records/s per core | Yes (seeded) | None ✓ (cannot reuse) | Most realistic model: voice/SMS/data, 26-field 3GPP-style records, Zipf contact book, hourly and weekday weights, mobility and handover, anomaly injection. Too slow and unlicensed, but a good model to copy. Active (2026). |
+| [mrafalo/fastcdrgen](https://github.com/mrafalo/fastcdrgen) | Rust, single process | Customers x relations x calls per relation; batched CSV | No (`thread_rng`) | MIT text in the README, no LICENSE file | Markov-chain behaviour with fraud, SIM-box, multi-SIM and churn profiles, plus BTS ids. Not reproducible, and it writes one file. |
+| [RealImpactAnalytics/cdr-generator](https://github.com/marivipelaez/cdr-generator) | Scala on Spark (GraphX social graph) | Cells, users and social graph, one simulated day per pass | Not stated | Original repo deleted; the surviving copy has no licence | Right architecture for scale (Spark, graph-driven), but abandoned since 2017. |
+| [qvantel/orcd-generator](https://github.com/qvantel/orcd-generator) | Scala on Spark, writes to Cassandra | Configurable CDR count and history | No | MIT ✓ | Trend-driven (voice, SMS, MMS, data per country) for a roaming dashboard. Writes to Cassandra, not files. Unmaintained since 2017. |
+| [mayconbordin/cdr-gen](https://github.com/mayconbordin/cdr-gen) | Java, in memory | Accounts x calls per account | No | MIT ✓ | Billing-oriented (call types, off-peak, cost per minute). Builds the whole population in memory, so it won't reach TB size. |
+| [mplpl/MobileNetworkSimulator](https://github.com/mplpl/MobileNetworkSimulator) | Python, single process | Subscribers x days | No | MIT ✓ | Small and simple: MO/MT legs, BTS location, SIM-box fraud. Good reference for a two-table model (`cdr`, `imsi`). |
+| [CARD-AI/CDR-Generator](https://github.com/CARD-AI/CDR-Generator) | Python, single process | Customers, one month | No | MIT ✓ | Calibrated on real Lithuanian telco data (IVUS 2021 paper); friend and acquaintance graph, event scenarios. Small scale. |
+| [NetEventSimulator](https://github.com/bogdanoancea/simulator) (ESSnet Big Data) | C++ micro-simulation | Persons moving on a map, with antennas | Seeded | EUPL-1.2 ✓ | Network signalling events with ground-truth positions, for official statistics. Not call records, and not built for volume. |
+| [dbldatagen](https://github.com/databrickslabs/dbldatagen) (Databricks Labs) | PySpark | Billions of rows in minutes | Yes | Databricks License ✓: use only with Databricks services | Generic generator, not CDR-specific. The licence rules it out for our DuckDB pipeline. |
+| [FraudZen](https://gitlab.inria.fr/simbox-fraud-mitigation) (INRIA) | Simulator | ~119 MB published set | | Unverified | Fraud research; see the table above. |
+
+Conclusion: nothing can be adopted as is, so the home-grown generator below remains the plan. Ideas
+worth borrowing: whetherharder's record layout, contact book and temporal weights; the
+fraud/SIM-box/churn profiles from fastcdrgen and MobileNetworkSimulator; and Telecom Italia's real
+per-square activity curves for calibration.
+
+### CDR query sets
+
+Searched 2026-10-07 for published CDR SQL we could generate data to match. There is no CDR
+benchmark query set, but one real-world source stands out:
+
+**[Flowminder FlowKit](https://github.com/Flowminder/FlowKit)** (MPL-2.0 ✓, active in 2026). FlowKit is
+the toolkit Flowminder uses to analyse real operator CDRs for humanitarian work. It has three parts that fit together:
+
+- A fixed CDR schema in Postgres ([`flowdb/bin/build/0020_schema_events.sql`](https://github.com/Flowminder/FlowKit/blob/master/flowdb/bin/build/0020_schema_events.sql)):
+  `events.calls`, `events.sms`, `events.mds` (mobile data sessions), `events.topups` and `events.forwards`,
+  each holding `msisdn`, `msisdn_counterpart`, `datetime`, `duration`, `location_id`, `imsi`, `imei`, `tac` and
+  operator/country codes. Alongside are `infrastructure.cells`, `sites` and `tacs`, plus admin-boundary geography.
+- A synthetic data generator written as SQL run from Python
+  ([`generate_synthetic_data_sql.py`](https://github.com/Flowminder/FlowKit/blob/master/flowdb/testdata/bin/generate_synthetic_data_sql.py)).
+  It scales by `--n-subscribers`, `--n-cells`, `--n-sites`, `--n-tacs`, `--n-calls/--n-sms/--n-mds` per day and
+  `--n-days`. Subscribers have home regions, out-of-area and relocation probabilities, an interaction graph
+  (`--interactions-multiplier`) and an optional "disaster" displacement. It runs inside Postgres/PostGIS and uses
+  `random()`, so it is not deterministic as written.
+- About 100 query classes in `flowmachine/features/` that each produce one SQL statement. Subscriber-level ones
+  include daily, modal, home and last location, radius of gyration, event counts, subscriber degree, contact balance,
+  nocturnal events, entropy, interevent intervals, call durations, topup amounts and handset stats. Aggregates include
+  unique subscriber counts, total network objects, flows and OD matrices, trips and meaningful locations. Only 16
+  rendered SQL snapshots are checked in (`*_sql.approved.txt`, mostly `daily_location` and `event_count`). The rest
+  are rendered by building each query object with fixed parameters and calling `get_query()`, which needs a running
+  FlowDB (`flowminder/flowdb-testdata` Docker image). That is a one-time extraction script, the same as how we take
+  queries from other upstream repositories.
+
+Caveats: the SQL is Postgres dialect (`DISTINCT ON`, `::` casts) and the location queries join cells to
+regions with PostGIS `st_within`. To keep to plain SQL and Iceberg types, we would precompute a
+`cell_region` mapping table and rewrite that join. Some features query internal cache tables and would need trimming.
+
+Other sources checked and rejected:
+
+- Databricks `lakehouse-industry-data-models` telecommunication model: Unity Catalog metric-view YAML, not
+  queries, and no standard open licence.
+- ClickHouse_Demos `telco_marketing`: a workshop demo with its own data generator, but the repo has no licence.
+- Blog and portfolio projects (Snowflake fraud demo, hobby "Telecom CDR analytics" repos): a handful of ad-hoc
+  queries each, no licence, not worth matching.
+
+Recommendation (agreed with the user 2026-10-07): make the home-grown generator produce FlowKit's schema,
+and take the query set from SQL rendered by FlowKit's `flowmachine`, after the PostGIS rewrite. That gives a public, real-world, MPL-licensed
+query set. The generator can be rewritten in DuckDB SQL from FlowKit's synthetic generator, with
+hash-based randomness so it is deterministic, and made to scale by subscribers x days.
+
 ### Home-grown CDR generator
+
+Status: in progress as the `flowkit` dataset; see [flowkit/README.md](./flowkit/README.md). It follows
+FlowKit's schema and queries, as described above. The original proposal follows.
 
 Proposal: write our own CDR generator in DuckDB SQL, in the style of dbgen. Deterministic, scaled by
 subscribers times days, with a heavy-tailed calling graph and OpenCelliD towers as the location
@@ -148,5 +219,5 @@ could be used to calibrate the generator's daily and weekly load shape.
 2. DSB: the same idea on top of TPC-DS.
 3. LDBC SNB BI, then LSQB: the headline non-TPC addition. Its Spark datagen is a good first job for EC2 based generation.
 4. SQLStorm StackOverflow data, for query variety.
-5. Telecom Italia: real, ODbL, ~717 GB, scriptable with a Dataverse token, but it needs a hand-written query set.
-6. A home-grown CDR generator.
+5. Telecom Italia: real, ODbL, ~717 GB, scriptable with a Dataverse token. Generator and hand-written queries done; the full EC2 run is pending.
+6. FlowKit CDR: a home-grown, deterministic DuckDB generator for FlowKit's schema, with queries rendered by FlowKit (in progress).
