@@ -1,5 +1,7 @@
 ALTER TABLE flowkit_sf1.calls ADD PRIMARY KEY (id, outgoing);
 ALTER TABLE flowkit_sf1.sms ADD PRIMARY KEY (id, outgoing);
+ALTER TABLE flowkit_sf1.mds ADD PRIMARY KEY (id);
+ALTER TABLE flowkit_sf1.topups ADD PRIMARY KEY (id);
 ALTER TABLE flowkit_sf1.cells ADD PRIMARY KEY (id);
 ALTER TABLE flowkit_sf1.sites ADD PRIMARY KEY (id);
 ALTER TABLE flowkit_sf1.tacs ADD PRIMARY KEY (id);
