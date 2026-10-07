@@ -80,7 +80,19 @@ uv run generate.py flowkit --sf 1                     # 100,000 subscribers, 31 
 uv run generate.py flowkit --sf 1 --days 7 --no-upload
 ```
 
-Event tables are generated in chunks of consecutive days (`--days-per-chunk`, default about one 500 MB file each), sorted by `datetime`, and resume per chunk through `_manifest.json`. The static tables are single files. Event volume grows linearly in subscribers x days: SF1 for 7 days takes under 2 minutes on a laptop.
+Published scale factors: SF1 and SF100.
+
+Event tables are generated in chunks of consecutive days (`--days-per-chunk`, by default about one 500 MB file each), sorted by `datetime`, and resumed per chunk through `_manifest.json`. The static tables are single files.
+
+Event volume grows linearly in subscribers x days. One process generates about 60,000 event rows per second, and part of each chunk (the parquet, CSV and zip writing) is single threaded. Table names can be passed to split a large run over parallel processes on one machine; each process repeats the cheap setup. SF100 is 5.9 billion event rows, so split it, for example:
+
+```bash
+uv run generate.py flowkit --sf 100 admin1 admin2 admin3 sites cells tacs cell_region calls   # 1.9 billion rows
+uv run generate.py flowkit --sf 100 sms                                                        # 2.5 billion rows
+uv run generate.py flowkit --sf 100 mds topups                                                 # 1.6 billion rows
+```
+
+At SF100 a chunk is one day: up to 80 million `sms` rows in DuckDB at once. Give each process about 64 GB of RAM.
 
 ## Queries
 

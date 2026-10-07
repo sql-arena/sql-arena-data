@@ -20,6 +20,8 @@ from common.bucket import BUCKET, Bucket, session
 
 # Iceberg namespace -> object prefix holding one folder per table
 DATASETS = {
+    "flowkit_sf1": "flowkit/sf1",
+    "flowkit_sf100": "flowkit/sf100",
     "job": "job",
     "nyctaxi": "nyctaxi",
     "publicbi": "publicbi",

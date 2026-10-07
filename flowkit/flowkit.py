@@ -37,6 +37,10 @@ BYTES_PER_ROW = 150
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "tables", nargs="*", default=[*STATIC, *EVENTS],
+        help="tables to generate, default all; separate processes can generate different tables in parallel",
+    )
     parser.add_argument("--sf", type=int, default=1, help=f"scale factor: {SUBSCRIBERS_PER_SF:,} subscribers each")
     parser.add_argument("--days", type=int, default=31, help="days of events from 2016-01-01, default 31")
     parser.add_argument(
@@ -70,10 +74,16 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     log(f"{prefix}: {subscribers:,} subscribers, {cells:,} cells, {args.days} days")
     for sql in ["setup.sql", "geography.sql", "infrastructure.sql", "subscribers.sql"]:
         db.execute(con, SQL_DIR / sql, **params)
+    unknown = set(args.tables) - set(STATIC) - set(EVENTS)
+    if unknown:
+        raise SystemExit(f"Unknown tables: {', '.join(sorted(unknown))}")
     for table in STATIC:
-        exporter.export(table, table)
+        if table in args.tables:
+            exporter.export(table, table)
 
     for table, (legs_sql, per_day) in EVENTS.items():
+        if table not in args.tables:
+            continue
         export = exporter.table(table)
         if export.complete:
             continue
