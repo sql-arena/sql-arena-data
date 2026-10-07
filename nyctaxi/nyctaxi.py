@@ -58,6 +58,8 @@ class Table:
     # per era. A part uses the rows per part of the era its first row belongs to.
     eras: tuple[str, ...]
     columns: tuple[Column, ...]
+    # Raised when columns change, which rebuilds the table
+    schema_version: int = 1
 
     def era(self, month: str) -> str:
         return [first for first in self.eras if first <= month][-1]
@@ -117,7 +119,9 @@ TABLES = {
                 col("congestion_surcharge", "DOUBLE"),
                 col("airport_fee", "DOUBLE"),
                 col("cbd_congestion_fee", "DOUBLE"),
+                col("request_source", "VARCHAR"),
             ),
+            schema_version=2,
         ),
         Table(
             "green_tripdata", "green", "2014-01", None, ("2014-01",),
@@ -143,7 +147,9 @@ TABLES = {
                 col("trip_type", "INTEGER"),
                 col("congestion_surcharge", "DOUBLE"),
                 col("cbd_congestion_fee", "DOUBLE"),
+                col("request_source", "VARCHAR"),
             ),
+            schema_version=2,
         ),
         Table(
             "fhv_tripdata", "fhv", "2015-01", None, ("2015-01", "2017-01", "2019-02"),
@@ -279,12 +285,13 @@ def load_trips(con: duckdb.DuckDBPyConnection, bucket: Bucket, table: Table, unt
     prefix = f"{DATASET}/{table.name}"
     manifest_key = f"{prefix}/_manifest.json"
     manifest = bucket.get_json(manifest_key) or {}
-    if (manifest.get("target_bytes"), manifest.get("eras")) != (target_bytes, list(table.eras)):
+    current = (target_bytes, list(table.eras), table.schema_version)
+    if (manifest.get("target_bytes"), manifest.get("eras"), manifest.get("schema_version", 1)) != current:
         if manifest.get("parts"):
-            log(f"{table.name}: target size or eras changed, rebuilding all parts")
+            log(f"{table.name}: target size, eras or columns changed, rebuilding all parts")
         manifest = {
-            "target_bytes": target_bytes, "eras": list(table.eras), "rows_per_part": {},
-            "months": manifest.get("months", {}), "parts": [],
+            "target_bytes": target_bytes, "eras": list(table.eras), "schema_version": table.schema_version,
+            "rows_per_part": {}, "months": manifest.get("months", {}), "parts": [],
         }
     work = WORK_DIR / table.name
 

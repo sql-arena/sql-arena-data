@@ -18,5 +18,6 @@ CREATE TABLE nyctaxi.yellow_tripdata (
     total_amount DOUBLE NULL,
     congestion_surcharge DOUBLE NULL,
     airport_fee DOUBLE NULL,
-    cbd_congestion_fee DOUBLE NULL
+    cbd_congestion_fee DOUBLE NULL,
+    request_source VARCHAR NULL
 );

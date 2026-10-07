@@ -19,5 +19,6 @@ CREATE TABLE nyctaxi.green_tripdata (
     payment_type INT NULL,
     trip_type INT NULL,
     congestion_surcharge DOUBLE NULL,
-    cbd_congestion_fee DOUBLE NULL
+    cbd_congestion_fee DOUBLE NULL,
+    request_source VARCHAR NULL
 );

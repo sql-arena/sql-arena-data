@@ -19,7 +19,7 @@ CloudFront answers 403 both for a missing month and when it rate limits. A 403 o
 | `fhvhv_tripdata` | fhvhv | 2019-02 onward |
 | `taxi_zone` | zone lookup | |
 
-The source schema drifts between years. Each table has one normalised schema: lower snake_case names and one type per column. Source columns are matched case-insensitively against the known names (`TABLES` in `nyctaxi.py`). A missing column becomes `NULL`, and unknown source columns are logged as a warning.
+The source schema drifts between years. Each table has one normalised schema: lower snake_case names and one type per column. Source columns are matched case-insensitively against the known names (`TABLES` in `nyctaxi.py`). A missing column becomes `NULL`, and unknown source columns are logged as a warning. The TLC added `request_source` to the yellow and green files from mid-2026; it is a column of `yellow_tripdata` and `green_tripdata` (schema version 2), NULL for earlier months.
 
 ## Queries
 
@@ -59,7 +59,7 @@ Downloads go to `temp/nyctaxi/` (override with `WORK_DIR`) and are removed once 
 `_manifest.json` records the target size, the measured rows per part of each era, and which month rows went into which part. A rerun skips completed parts and rebuilds only the trailing partial part, so newly published months are appended.
 
 - If a month's row count changes because the TLC republished it, the run stops. Delete `nyctaxi/<table>/` to rebuild.
-- Changing `--target-mb` or a table's eras rebuilds every part of that table. Parts left over from the earlier layout are deleted at the end of the run.
+- Changing `--target-mb`, a table's eras or its columns (`schema_version` in `TABLES`, raised whenever columns change) rebuilds every part of that table. Parts left over from the earlier layout are deleted at the end of the run.
 
 ## Schema
 
