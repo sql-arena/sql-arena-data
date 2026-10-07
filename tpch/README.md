@@ -23,7 +23,13 @@ uv run generate.py tpch --sf 1000 --children 100
 uv run generate.py tpch --sf 1000 --children 100 --steps 40-59
 ```
 
-`--children N` generates `lineitem`, `orders` and `partsupp` one `dbgen` step at a time, to bound memory. `partsupp` parts are exported per step. Steps of `lineitem` and `orders` are staged locally as parquet in `temp/tpch/sf<N>/staging/`, partitioned by month. Once every step is staged, each month is sorted and exported, so all steps must run on the same machine. At SF1000 the staging needs about 300 GB of disk. `customer`, `nation`, `part`, `region` and `supplier` always come from one full `dbgen` call.
+`--children N` runs `dbgen` one step at a time to bound memory; the union of the steps is the full data set:
+
+- `partsupp` parts are exported per step.
+- Steps of `lineitem` and `orders` are staged locally as parquet in `temp/tpch/sf<N>/staging/`, partitioned by month. Once every step is staged, each month is sorted and exported.
+- `customer`, `nation`, `part`, `region` and `supplier` are staged whole and exported once all steps are staged, so they get full-size parts.
+
+All steps must therefore run on the same machine. At SF1000 the staging needs about 300 GB of disk, and the largest export (`part`, 200M rows) is loaded into DuckDB in one go, so give it 64 GB of RAM or more.
 
 ## Restarting
 

@@ -33,8 +33,8 @@ class Staging:
         )
         (self.directory / f"_staged_{step:04}").touch()
 
-    def export(self, con: duckdb.DuckDBPyConnection, export: TableExport, order_by: str) -> None:
-        """Export every bucket in order, finish the table and remove the staging."""
+    def export(self, con: duckdb.DuckDBPyConnection, export: TableExport, order_by: str | None) -> None:
+        """Export every bucket in order (each sorted by order_by if given), finish the table and remove the staging."""
         for bucket_dir in sorted(self.directory.glob(f"_{self.name}=*")):
             chunk = f"{self.name} {bucket_dir.name.split('=', 1)[1]}"
             if export.chunk_done(chunk):

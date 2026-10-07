@@ -38,26 +38,32 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     publish_checked_in(bucket, prefix)
     exporter = Exporter(con, bucket, prefix, args.target_mb, {"children": args.children})
 
-    tables = BASE_TABLES + (STEP_TABLES if args.children == 1 else [])
-    missing = [t for t in tables if not exporter.table(t).complete]
-    if missing:
-        log(f"{prefix}: generating {', '.join(missing)}")
-        db.execute(con, SQL_DIR / "dbgen.sql", SF=args.sf)
-        for table in missing:
-            exporter.export(table, f"tpch.{table}", ORDER_BY.get(table))
-    if args.children > 1:
+    if args.children == 1:
+        missing = [t for t in BASE_TABLES + STEP_TABLES if not exporter.table(t).complete]
+        if missing:
+            log(f"{prefix}: generating {', '.join(missing)}")
+            db.execute(con, SQL_DIR / "dbgen.sql", SF=args.sf)
+            for table in missing:
+                exporter.export(table, f"tpch.{table}", ORDER_BY.get(table))
+    else:
         generate_steps(con, exporter, args, TEMP_DIR / prefix / "staging")
 
 
 def generate_steps(con, exporter: Exporter, args: argparse.Namespace, staging: Path) -> None:
-    """lineitem and orders are staged locally per month over all steps, then sorted and exported a month at a time.
+    """Every table is generated in dbgen steps; the union of the steps is the full table.
 
-    partsupp has no date, so each step is exported directly.
+    partsupp is exported per step. lineitem and orders are staged locally per month, then sorted and exported a
+    month at a time. The small tables are staged whole and exported once all steps are staged, so they get
+    full-size parts.
     """
     partsupp = exporter.table("partsupp")
-    ordered = {t: exporter.table(t) for t in ORDER_BY}
-    ordered = {t: e for t, e in ordered.items() if not e.complete}
-    stagings = {t: Staging(staging / t, f"strftime({ORDER_BY[t]}, '%Y-%m')", "month") for t in ordered}
+    staged_tables = {t: exporter.table(t) for t in [*ORDER_BY, *BASE_TABLES]}
+    staged_tables = {t: e for t, e in staged_tables.items() if not e.complete}
+    stagings = {
+        t: Staging(staging / t, f"strftime({ORDER_BY[t]}, '%Y-%m')", "month") if t in ORDER_BY
+        else Staging(staging / t, "'all'", "table")
+        for t in staged_tables
+    }
     first, last = map(int, args.steps.split("-")) if args.steps else (0, args.children - 1)
 
     def step_chunk(step: int) -> str:
@@ -75,8 +81,8 @@ def generate_steps(con, exporter: Exporter, args: argparse.Namespace, staging: P
 
     if all(partsupp.chunk_done(step_chunk(s)) for s in range(args.children)):
         partsupp.finish()
-    for table, export in ordered.items():
+    for table, export in staged_tables.items():
         if all(stagings[table].staged(s) for s in range(args.children)):
-            stagings[table].export(con, export, ORDER_BY[table])
+            stagings[table].export(con, export, ORDER_BY.get(table))
         else:
             log(f"{exporter.prefix}/{table}: not all steps staged yet, run the remaining steps on this machine")
