@@ -27,8 +27,10 @@ WORK_DIR = TEMP_DIR / DATASET / "source"
 TOKEN_PARAMETER = os.environ.get("DATAVERSE_TOKEN_PARAMETER", "/sql-arena/dataverse-api-token")
 TOKEN_REGION = os.environ.get("DATAVERSE_TOKEN_REGION", "eu-north-1")
 
-# Cut off mid-line at the source (its md5 matches Dataverse); the partial last line is skipped
-TRUNCATED_FILES = {"tn-to-provinces-2013-11-18.txt"}
+# Source files with corrupt lines (their md5 matches Dataverse) and how many: the lines are skipped and logged.
+# tn-to-provinces-2013-11-18 is cut off mid-line; MItoMI-2013-11-12 has two lines where a record runs into the
+# next one with the newline and leading timestamp digits lost, so neither record can be recovered reliably.
+CORRUPT_FILES = {"tn-to-provinces-2013-11-18.txt": 1, "MItoMI-2013-11-12.txt": 2}
 
 
 @dataclass(frozen=True)
@@ -140,14 +142,14 @@ def chunk_name(files: list[SourceFile]) -> str:
 
 
 def check_rejects(con: duckdb.DuckDBPyConnection) -> None:
-    """Fail on any line read_csv rejected, except the one partial line of a known truncated file."""
+    """Fail on any line read_csv rejected, unless it is one of the known corrupt lines of CORRUPT_FILES."""
     rejects = db.fetch_all(con, SQL_DIR / "rejects.sql")
     names = [Path(path).name for path, _, _ in rejects]
-    unexpected = [r for r, name in zip(rejects, names) if name not in TRUNCATED_FILES or names.count(name) > 1]
+    unexpected = [r for r, name in zip(rejects, names) if names.count(name) != CORRUPT_FILES.get(name)]
     if unexpected:
         raise SystemExit("Rejected source lines:\n" + "\n".join(f"  {p} line {line}: {e}" for p, line, e in unexpected))
     for name, (_, line, _) in zip(names, rejects):
-        log(f"{DATASET}: skipped the truncated line {line} of {name}")
+        log(f"{DATASET}: skipped the corrupt line {line} of {name}")
 
 
 def generate_table(con: duckdb.DuckDBPyConnection, exporter: Exporter, table: Table, args: argparse.Namespace) -> None:

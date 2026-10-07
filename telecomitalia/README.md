@@ -133,7 +133,14 @@ Each file is downloaded through the guestbook with a fresh signed URL per attemp
 
 ## Validation
 
-Loading is strict: every line must have the expected number of fields and types, and the key columns must be present. One source file is known to be cut off mid-line: `tn-to-provinces-2013-11-18.txt` ends after 24,772,608 bytes, and its md5 matches Dataverse, so the file itself is truncated. Its partial last line is skipped and logged. Any other rejected line stops the run.
+Loading is strict: every line must have the expected number of fields and types, and the key columns must be present. Two source files have known corrupt lines. In both, the md5 matches Dataverse, so the corruption is in the published files:
+
+| File | Lines skipped | Problem |
+|---|---|---|
+| `tn-to-provinces-2013-11-18.txt` | 1 (line 449,581) | The file ends after 24,772,608 bytes, mid-line |
+| `MItoMI-2013-11-12.txt` | 2 (lines 121,940,911 and 121,940,949) | A record runs into the next one, with the newline and the next timestamp's leading digits lost. The split point is ambiguous, so both glued records are dropped |
+
+These lines are skipped and logged (`CORRUPT_FILES` in `telecomitalia.py` lists them with their counts). A file with a different number of rejected lines, or any other rejected line, stops the run.
 
 ## Restarting
 
