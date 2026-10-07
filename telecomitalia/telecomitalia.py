@@ -192,6 +192,6 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     dataverse_token()
     publish_checked_in(bucket, DATASET)
     con = db.connect()
-    exporter = Exporter(con, bucket, DATASET, args.target_mb)
+    exporter = Exporter(con, bucket, DATASET, args.target_mb, {"chunk_gb": args.chunk_gb})
     for name in args.tables:
         generate_table(con, exporter, TABLES[name], args)

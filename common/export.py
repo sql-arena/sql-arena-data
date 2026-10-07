@@ -18,11 +18,15 @@ SAMPLE_ROWS = 1_000_000
 
 
 class Exporter:
-    def __init__(self, con: duckdb.DuckDBPyConnection, bucket: Bucket, prefix: str, target_mb: int):
+    def __init__(
+        self, con: duckdb.DuckDBPyConnection, bucket: Bucket, prefix: str, target_mb: int, settings: dict | None = None
+    ):
+        """settings: generator options that decide a table's chunks; a table is rebuilt when they change."""
         self.con = con
         self.bucket = bucket
         self.prefix = prefix
         self.target_bytes = target_mb * 1_000_000
+        self.settings = settings or {}
         self.work = TEMP_DIR / prefix
 
     def table(self, name: str) -> "TableExport":
@@ -53,8 +57,13 @@ class TableExport:
         self.folder = f"{exporter.prefix}/{name}"
         self.manifest_key = f"{self.folder}/_manifest.json"
         manifest = exporter.bucket.get_json(self.manifest_key)
-        if manifest is None or manifest["target_bytes"] != exporter.target_bytes:
-            manifest = {"target_bytes": exporter.target_bytes, "complete": False, "chunks": {}}
+        # Manifests from before settings were recorded take the current settings
+        if manifest is not None:
+            manifest.setdefault("settings", exporter.settings)
+        if manifest is None or (manifest["target_bytes"], manifest["settings"]) != (exporter.target_bytes, exporter.settings):
+            if manifest is not None:
+                log(f"{self.folder}: target size or settings changed, rebuilding")
+            manifest = {"target_bytes": exporter.target_bytes, "settings": exporter.settings, "complete": False, "chunks": {}}
         self.manifest = manifest
 
     @property

@@ -60,18 +60,19 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         INTERACTIONS=INTERACTIONS, PAIRS=subscribers * INTERACTIONS, OUT_OF_AREA=OUT_OF_AREA,
         RELOCATION=RELOCATION, TOPUP_PROBABILITY=TOPUP_PROBABILITY,
     )
+    # Calls and SMS have two rows per event
+    largest = max(per_day * (2 if sql == "pair_legs.sql" else 1) for sql, per_day in EVENTS.values() if per_day) * subscribers
+    rows_per_chunk = args.target_mb * 1_000_000 // BYTES_PER_ROW
+    days_per_chunk = args.days_per_chunk or max(1, min(args.days, rows_per_chunk // largest))
+    chunks = [(first, min(first + days_per_chunk, args.days) - 1) for first in range(0, args.days, days_per_chunk)]
     con = db.connect()
-    exporter = Exporter(con, bucket, prefix, args.target_mb)
+    exporter = Exporter(con, bucket, prefix, args.target_mb, {"days": args.days, "days_per_chunk": days_per_chunk})
     log(f"{prefix}: {subscribers:,} subscribers, {cells:,} cells, {args.days} days")
     for sql in ["setup.sql", "geography.sql", "infrastructure.sql", "subscribers.sql"]:
         db.execute(con, SQL_DIR / sql, **params)
     for table in STATIC:
         exporter.export(table, table)
 
-    largest = max(per_day for _, per_day in EVENTS.values() if per_day) * 2 * subscribers
-    rows_per_chunk = args.target_mb * 1_000_000 // BYTES_PER_ROW
-    days_per_chunk = args.days_per_chunk or max(1, min(args.days, rows_per_chunk // largest))
-    chunks = [(first, min(first + days_per_chunk, args.days) - 1) for first in range(0, args.days, days_per_chunk)]
     for table, (legs_sql, per_day) in EVENTS.items():
         export = exporter.table(table)
         if export.complete:
