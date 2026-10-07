@@ -105,14 +105,14 @@ Each file's header carries the MPL-2.0 notice, the FlowKit commit and the FlowAP
 - Radius of gyration's `array_agg`/`unnest` becomes window averages. PostGIS geography distance becomes haversine.
 - FlowDB-only columns are dropped, using `flowkit/sf1/schema/`. Tables are qualified with the namespace.
 
-**Verification.** On FlowDB's own test data, each original was run in Postgres and its rewrite in DuckDB, over a mirror with `cell_region` computed by `st_within`. 30 of 32 return identical results. q13 (radius of gyration) and q22 (displacement) differ by at most 0.10%, which is haversine against PostGIS's spheroid. All 32 run on generated SF1 data (7 days) in DuckDB, in 3.5 s or less each.
+**Verification.** On FlowDB's own test data, each original was run in Postgres and its rewrite in DuckDB, over a mirror with `cell_region` computed by `st_within`. 29 of 32 return identical results. The other three come from the same 0.10% difference between haversine and PostGIS's spheroid distance: q13 (radius of gyration) and q22 (displacement) differ by at most that much, and in q24 two subscribers land in the adjacent histogram bin. All 32 run on generated SF1 data (7 days) in DuckDB, in 3.5 s or less each.
 
 **Caveats.**
 
 - Run with the session time zone set to UTC. FlowKit compares the `TIMESTAMPTZ` columns with plain strings such as `'2016-01-01 00:00:00'`.
 - The rewrite assumes one version per cell, because `cell_region` is keyed by `location_id`. The generator only writes version 0.
 - q21 (topup balance) keeps `EXTRACT(EPOCH FROM ts - LAG(...))`, which not every engine supports.
-- q24 and q25 apply FlowKit's privacy suppression and return a single row of NULLs when any bin has fewer than 15 subscribers. That happens at SF1.
+- The histograms (q24, q25) use a fixed range: radius of gyration over 0 to 300 km in 20 bins, and outgoing SMS count over 0 to 150 in 10 bins. Subscribers outside the range are not counted. FlowKit still blanks the whole histogram if any bin has fewer than 15 subscribers. That happens on FlowDB's small test data, but not at SF1, where the smallest bins hold 69 and 67.
 - q22's distance matrix cross-joins all distinct cell points, so it is quadratic in cells: 1M pairs at SF1 (1,000 cells), about 10^10 at SF100.
 - Not included:
   - `meaningful_locations` needs FlowDB's clustering function and labelled polygons.
