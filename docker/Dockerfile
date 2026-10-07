@@ -9,7 +9,7 @@ RUN apt-get update \
 RUN curl -fsSL -o /tmp/kit.zip https://github.com/gregrahn/tpcds-kit/archive/${TPCDS_KIT_COMMIT}.zip \
     && unzip -q /tmp/kit.zip -d /tmp \
     && make -C /tmp/tpcds-kit-${TPCDS_KIT_COMMIT}/tools OS=LINUX dsdgen \
-       CC="cc -std=gnu89 -Wno-implicit-int -Wno-implicit-function-declaration -Wno-int-conversion" \
+       CC="cc -std=gnu89 -fcommon -Wno-implicit-int -Wno-implicit-function-declaration -Wno-int-conversion" \
     && mkdir /opt/tpcds-kit \
     && cp /tmp/tpcds-kit-${TPCDS_KIT_COMMIT}/tools/dsdgen /tmp/tpcds-kit-${TPCDS_KIT_COMMIT}/tools/tpcds.idx /opt/tpcds-kit/
 

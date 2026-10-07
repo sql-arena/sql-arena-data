@@ -23,8 +23,8 @@ SQL_DIR = Path(__file__).parent / "sql"
 KIT_COMMIT = "5a3a81796992b725c2a8b216767e142609966752"
 KIT_URL = f"https://github.com/gregrahn/tpcds-kit/archive/{KIT_COMMIT}.zip"
 KIT_DIR = Path(os.environ.get("TPCDS_KIT_DIR", TEMP_DIR / "tpcds" / "kit"))  # holds dsdgen and tpcds.idx
-# The kit is pre-C99 code that current compilers reject by default
-KIT_CC = "cc -std=gnu89 -Wno-implicit-int -Wno-implicit-function-declaration -Wno-int-conversion"
+# The kit is pre-C99 code that defines the same globals in several files; current compilers reject both by default
+KIT_CC = "cc -std=gnu89 -fcommon -Wno-implicit-int -Wno-implicit-function-declaration -Wno-int-conversion"
 
 # dsdgen generates each fact table together with its returns
 FACTS = {
