@@ -27,6 +27,7 @@ DATASETS = {
     "tpch_sf1": "tpch/sf1",
     "tpch_sf1000": "tpch/sf1000",
     "tpcds_sf1": "tpcds/sf1",
+    "tpcds_sf1000": "tpcds/sf1000",
 }
 
 

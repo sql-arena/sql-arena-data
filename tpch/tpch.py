@@ -1,13 +1,13 @@
 """TPC-H, generated with the DuckDB tpch extension."""
 
 import argparse
-import shutil
 from pathlib import Path
 
 from common import TEMP_DIR, db, log
 from common.bucket import Bucket
-from common.export import Exporter, TableExport
+from common.export import Exporter
 from common.queries import publish_checked_in, write_queries
+from common.staging import Staging
 
 SQL_DIR = Path(__file__).parent / "sql"
 BASE_TABLES = ["customer", "nation", "part", "region", "supplier"]
@@ -57,44 +57,26 @@ def generate_steps(con, exporter: Exporter, args: argparse.Namespace, staging: P
     partsupp = exporter.table("partsupp")
     ordered = {t: exporter.table(t) for t in ORDER_BY}
     ordered = {t: e for t, e in ordered.items() if not e.complete}
+    stagings = {t: Staging(staging / t, f"strftime({ORDER_BY[t]}, '%Y-%m')", "month") for t in ordered}
     first, last = map(int, args.steps.split("-")) if args.steps else (0, args.children - 1)
 
     def step_chunk(step: int) -> str:
         return f"step {step} of {args.children}"
 
-    def staged(table: str, step: int) -> Path:
-        return staging / table / f"_staged_{step:04}"
-
     for step in range(first, last + 1):
-        to_stage = [t for t in ordered if not staged(t, step).exists()]
+        to_stage = [t for t, s in stagings.items() if not s.staged(step)]
         if partsupp.chunk_done(step_chunk(step)) and not to_stage:
             continue
         log(f"{exporter.prefix}: generating {step_chunk(step)}")
         db.execute(con, SQL_DIR / "dbgen_step.sql", SF=args.sf, CHILDREN=args.children, STEP=step)
         partsupp.write("tpch.partsupp", step_chunk(step), single_chunk=False)
         for table in to_stage:
-            (staging / table).mkdir(parents=True, exist_ok=True)
-            for partial in (staging / table).glob(f"*/step_{step}_*.parquet"):
-                partial.unlink()
-            db.execute(con, SQL_DIR / "stage.sql", TABLE=table, ORDER_BY=ORDER_BY[table], DIR=staging / table, STEP=step)
-            staged(table, step).touch()
+            stagings[table].stage(con, f"tpch.{table}", step)
 
     if all(partsupp.chunk_done(step_chunk(s)) for s in range(args.children)):
         partsupp.finish()
     for table, export in ordered.items():
-        if all(staged(table, s).exists() for s in range(args.children)):
-            export_staged(con, export, ORDER_BY[table], staging / table)
+        if all(stagings[table].staged(s) for s in range(args.children)):
+            stagings[table].export(con, export, ORDER_BY[table])
         else:
             log(f"{exporter.prefix}/{table}: not all steps staged yet, run the remaining steps on this machine")
-
-
-def export_staged(con, export: TableExport, order_by: str, staging: Path) -> None:
-    for month_dir in sorted(staging.glob("_month=*")):
-        chunk = f"month {month_dir.name.removeprefix('_month=')}"
-        if export.chunk_done(chunk):
-            continue
-        db.execute(con, SQL_DIR / "staged_month.sql", DIR=month_dir)
-        export.write("_month", chunk, single_chunk=False, order_by=order_by)
-        db.drop_table(con, "_month")
-    export.finish()
-    shutil.rmtree(staging)
