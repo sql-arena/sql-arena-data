@@ -1,0 +1,25 @@
+ALTER TABLE flowkit_sf1.calls ADD PRIMARY KEY (id, outgoing);
+ALTER TABLE flowkit_sf1.sms ADD PRIMARY KEY (id, outgoing);
+ALTER TABLE flowkit_sf1.cells ADD PRIMARY KEY (id);
+ALTER TABLE flowkit_sf1.sites ADD PRIMARY KEY (id);
+ALTER TABLE flowkit_sf1.tacs ADD PRIMARY KEY (id);
+ALTER TABLE flowkit_sf1.admin1 ADD PRIMARY KEY (admin1pcod);
+ALTER TABLE flowkit_sf1.admin2 ADD PRIMARY KEY (admin2pcod);
+ALTER TABLE flowkit_sf1.admin3 ADD PRIMARY KEY (admin3pcod);
+ALTER TABLE flowkit_sf1.cell_region ADD PRIMARY KEY (location_id);
+
+ALTER TABLE flowkit_sf1.calls ADD FOREIGN KEY (location_id) REFERENCES flowkit_sf1.cells (id);
+ALTER TABLE flowkit_sf1.calls ADD FOREIGN KEY (tac) REFERENCES flowkit_sf1.tacs (id);
+ALTER TABLE flowkit_sf1.sms ADD FOREIGN KEY (location_id) REFERENCES flowkit_sf1.cells (id);
+ALTER TABLE flowkit_sf1.sms ADD FOREIGN KEY (tac) REFERENCES flowkit_sf1.tacs (id);
+ALTER TABLE flowkit_sf1.mds ADD FOREIGN KEY (location_id) REFERENCES flowkit_sf1.cells (id);
+ALTER TABLE flowkit_sf1.mds ADD FOREIGN KEY (tac) REFERENCES flowkit_sf1.tacs (id);
+ALTER TABLE flowkit_sf1.topups ADD FOREIGN KEY (location_id) REFERENCES flowkit_sf1.cells (id);
+ALTER TABLE flowkit_sf1.topups ADD FOREIGN KEY (tac) REFERENCES flowkit_sf1.tacs (id);
+ALTER TABLE flowkit_sf1.cells ADD FOREIGN KEY (site_id) REFERENCES flowkit_sf1.sites (id);
+ALTER TABLE flowkit_sf1.cell_region ADD FOREIGN KEY (location_id) REFERENCES flowkit_sf1.cells (id);
+ALTER TABLE flowkit_sf1.admin2 ADD FOREIGN KEY (parent_pcod) REFERENCES flowkit_sf1.admin1 (admin1pcod);
+ALTER TABLE flowkit_sf1.admin3 ADD FOREIGN KEY (parent_pcod) REFERENCES flowkit_sf1.admin2 (admin2pcod);
+ALTER TABLE flowkit_sf1.cell_region ADD FOREIGN KEY (admin3pcod) REFERENCES flowkit_sf1.admin3 (admin3pcod);
+ALTER TABLE flowkit_sf1.cell_region ADD FOREIGN KEY (admin2pcod) REFERENCES flowkit_sf1.admin2 (admin2pcod);
+ALTER TABLE flowkit_sf1.cell_region ADD FOREIGN KEY (admin1pcod) REFERENCES flowkit_sf1.admin1 (admin1pcod);

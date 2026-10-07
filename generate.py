@@ -11,6 +11,7 @@ import argparse
 import sys
 
 from common.bucket import Bucket
+from flowkit import flowkit
 from iceberg import iceberg
 from job import job
 from nyctaxi import nyctaxi
@@ -19,7 +20,7 @@ from telecomitalia import telecomitalia
 from tpcds import tpcds
 from tpch import tpch
 
-GENERATORS = {"job": job, "nyctaxi": nyctaxi, "publicbi": publicbi, "tpch": tpch, "tpcds": tpcds, "telecomitalia": telecomitalia, "iceberg": iceberg}
+GENERATORS = {"flowkit": flowkit, "job": job, "nyctaxi": nyctaxi, "publicbi": publicbi, "tpch": tpch, "tpcds": tpcds, "telecomitalia": telecomitalia, "iceberg": iceberg}
 
 
 def main() -> int:
