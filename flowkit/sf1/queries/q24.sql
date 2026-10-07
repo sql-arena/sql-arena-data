@@ -6,91 +6,11 @@
    the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
    
    FlowAPI query spec:
-   {"query_kind": "histogram_aggregate", "metric": {"query_kind": "radius_of_gyration", "start_date": "2016-01-01", "end_date": "2016-01-08", "event_types": null, "subscriber_subset": null}, "bins": {"n_bins": 20}} */
+   {"query_kind": "histogram_aggregate", "metric": {"query_kind": "radius_of_gyration", "start_date": "2016-01-01", "end_date": "2016-01-08", "event_types": null, "subscriber_subset": null}, "bins": {"n_bins": 20}, "range": {"lower_bound": 0, "upper_bound": 300}} */
 WITH bounds AS (
   SELECT
-    CAST(MAX(value) AS DECIMAL) AS upper,
-    CAST(MIN(value) AS DECIMAL) AS lower
-  FROM (
-    SELECT
-      subscriber,
-      SQRT(
-        AVG(
-          POWER(
-            2 * 6371008.8 * ASIN(
-              SQRT(
-                POWER(SIN(RADIANS(av_lat - lat) / 2), 2) + COS(RADIANS(lat)) * COS(RADIANS(av_lat)) * POWER(SIN(RADIANS(av_lon - lon) / 2), 2)
-              )
-            ),
-            2
-          )
-        )
-      ) / 1000 AS value
-    FROM (
-      SELECT
-        subscriber_locs.subscriber AS subscriber,
-        lon,
-        lat,
-        AVG(lon) OVER (PARTITION BY subscriber_locs.subscriber) AS av_lon,
-        AVG(lat) OVER (PARTITION BY subscriber_locs.subscriber) AS av_lat
-      FROM (
-        SELECT
-          subscriber,
-          datetime AS time,
-          lon,
-          lat
-        FROM (
-          SELECT
-            l.datetime,
-            l.location_id,
-            l.subscriber,
-            sites.lon,
-            sites.lat
-          FROM (
-            SELECT
-              flowkit_sf1.calls.datetime,
-              flowkit_sf1.calls.location_id,
-              flowkit_sf1.calls.msisdn AS subscriber
-            FROM flowkit_sf1.calls
-            WHERE
-              flowkit_sf1.calls.datetime >= '2016-01-01 00:00:00'
-              AND flowkit_sf1.calls.datetime < '2016-01-08 00:00:00'
-            UNION ALL
-            SELECT
-              flowkit_sf1.sms.datetime,
-              flowkit_sf1.sms.location_id,
-              flowkit_sf1.sms.msisdn AS subscriber
-            FROM flowkit_sf1.sms
-            WHERE
-              flowkit_sf1.sms.datetime >= '2016-01-01 00:00:00'
-              AND flowkit_sf1.sms.datetime < '2016-01-08 00:00:00'
-          ) AS l
-          INNER JOIN (
-            SELECT
-              loc_table.id AS location_id,
-              loc_table.date_of_first_service,
-              loc_table.date_of_last_service,
-              loc_table.longitude AS lon,
-              loc_table.latitude AS lat
-            FROM flowkit_sf1.cells AS loc_table
-          ) AS sites
-            ON l.location_id = sites.location_id
-            AND (
-              sites.date_of_first_service IS NULL
-              OR CAST(l.datetime AS DATE) >= sites.date_of_first_service
-            )
-            AND (
-              sites.date_of_last_service IS NULL
-              OR CAST(l.datetime AS DATE) <= sites.date_of_last_service
-            )
-        ) AS foo
-        WHERE
-          NOT location_id IS NULL AND location_id <> ''
-      ) AS subscriber_locs
-    ) AS located
-    GROUP BY
-      subscriber
-  ) AS to_agg
+    CAST(300.0 AS DECIMAL) AS upper,
+    CAST(0.0 AS DECIMAL) AS lower
 ), breaks AS (
   SELECT
     lower,

@@ -1,6 +1,8 @@
 """FlowAPI query specs rendered into the FlowKit query set, modelled on flowmachine's tests/test_query_object_construction.py.
 
 "visited_most_days" is left out: flowmachine at this commit fails to render it (no spatial_unit).
+Histograms have a fixed range: over [min, max] the top bin holds only the extremes, and FlowKit suppresses
+the whole histogram when any bin has fewer than 15 subscribers.
 Dates stay inside 2016-01-01 to 2016-01-07 so the queries also have data in a 7 day test run.
 """
 
@@ -77,8 +79,10 @@ SPECS = {
     "q22": joined(week("displacement", statistic="avg", reference_location=modal_location(DAYS[:3], "lon-lat"))),
     "q23": joined({"query_kind": "total_active_periods", "start_date": WEEK[0], "total_periods": 7, "period_length": 1,
                    "period_unit": "days", "event_types": None, "subscriber_subset": None}),
-    "q24": {"query_kind": "histogram_aggregate", "metric": week("radius_of_gyration"), "bins": {"n_bins": 20}},
-    "q25": {"query_kind": "histogram_aggregate", "metric": week("event_count", direction="out"), "bins": {"n_bins": 10}},
+    "q24": {"query_kind": "histogram_aggregate", "metric": week("radius_of_gyration"), "bins": {"n_bins": 20},
+            "range": {"lower_bound": 0, "upper_bound": 300}},
+    "q25": {"query_kind": "histogram_aggregate", "metric": week("event_count", direction="out"), "bins": {"n_bins": 10},
+            "range": {"lower_bound": 0, "upper_bound": 150}},
     "q26": {"query_kind": "unique_visitor_counts",
             "active_at_reference_location_counts": {
                 "query_kind": "active_at_reference_location_counts",

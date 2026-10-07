@@ -6,37 +6,11 @@
    the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
    
    FlowAPI query spec:
-   {"query_kind": "histogram_aggregate", "metric": {"query_kind": "event_count", "start_date": "2016-01-01", "end_date": "2016-01-08", "event_types": null, "subscriber_subset": null, "direction": "out"}, "bins": {"n_bins": 10}} */
+   {"query_kind": "histogram_aggregate", "metric": {"query_kind": "event_count", "start_date": "2016-01-01", "end_date": "2016-01-08", "event_types": null, "subscriber_subset": null, "direction": "out"}, "bins": {"n_bins": 10}, "range": {"lower_bound": 0, "upper_bound": 150}} */
 WITH bounds AS (
   SELECT
-    CAST(MAX(value) AS DECIMAL) AS upper,
-    CAST(MIN(value) AS DECIMAL) AS lower
-  FROM (
-    SELECT
-      subscriber,
-      COUNT(*) AS value
-    FROM (
-      SELECT
-        flowkit_sf1.calls.msisdn AS subscriber,
-        flowkit_sf1.calls.outgoing
-      FROM flowkit_sf1.calls
-      WHERE
-        flowkit_sf1.calls.datetime >= '2016-01-01 00:00:00'
-        AND flowkit_sf1.calls.datetime < '2016-01-08 00:00:00'
-      UNION ALL
-      SELECT
-        flowkit_sf1.sms.msisdn AS subscriber,
-        flowkit_sf1.sms.outgoing
-      FROM flowkit_sf1.sms
-      WHERE
-        flowkit_sf1.sms.datetime >= '2016-01-01 00:00:00'
-        AND flowkit_sf1.sms.datetime < '2016-01-08 00:00:00'
-    ) AS u
-    WHERE
-      outgoing
-    GROUP BY
-      subscriber
-  ) AS to_agg
+    CAST(150.0 AS DECIMAL) AS upper,
+    CAST(0.0 AS DECIMAL) AS lower
 ), breaks AS (
   SELECT
     lower,
