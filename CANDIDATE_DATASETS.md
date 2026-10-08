@@ -50,80 +50,11 @@ Real per-call CDRs are essentially never published because they are too sensitiv
 
 | Dataset | What it is | Size | Queries? | Queries | Licence | Notes |
 |---|---|---|---|---|---|---|
-| [Telecom Italia Big Data Challenge](https://theodi.fbk.eu/openbigdata) | Milan and Trentino, Nov-Dec 2013: calls, SMS and internet activity aggregated per grid square in 10-minute slots, plus square-to-square and square-to-province interactions | ~717 GB of text across 19 Dataverse datasets; see below | No | None published; public code is ML traffic forecasting, not SQL | ODbL 1.0 ✓ (telecom, grids, social, electricity), CC BY 2.5 ✓ (weather), MIT ✓ (sample code) | Real data, but already aggregated: no individual calls or subscribers. Download needs a free Dataverse account. |
 | [FraudZen](https://gitlab.inria.fr/simbox-fraud-mitigation) (INRIA) | Simulator of synthetic CDRs with SIM-box fraud | Published set is ~119 MB | No | None | Open source (unverified) | Built for fraud detection research, not SQL benchmarking. |
 | [TATP](https://tatpbenchmark.sourceforge.net/) | Telecom OLTP benchmark simulating a Home Location Register | Number of subscribers | No | 7 transactions, no analytical queries | Open (unverified) | Subscriber register only; contains no call records. |
 
-### Telecom Italia: getting the data
-
-All files are on Harvard Dataverse under the
-[`bigdatachallenge`](https://dataverse.harvard.edu/dataverse/bigdatachallenge) collection
-(Dataverse 6.10). None of the files are restricted, but every telecom dataset is behind guestbook 96,
-"Privacy risk assessment", which asks only for an email address (no custom questions).
-
-| Dataverse dataset | DOI | Files | Size | Licence |
-|---|---|---|---|---|
-| Telecommunications - SMS, Call, Internet - MI | `10.7910/DVN/EGZHFV` | 62 daily `.txt` | 20.8 GB | ODbL 1.0 |
-| Telecommunications - MI to MI | `10.7910/DVN/JZMTBJ` | 62 daily `.txt` | 370.0 GB | ODbL 1.0 |
-| Telecommunications - MI to Provinces | `10.7910/DVN/F3RBMF` | 62 daily `.txt` | 16.1 GB | ODbL 1.0 |
-| Telecommunications - SMS, Call, Internet - TN | `10.7910/DVN/QLCABU` | 62 daily `.txt` | 11.6 GB | ODbL 1.0 |
-| Telecommunications - TN to TN | `10.7910/DVN/KCRS61` | 62 daily `.txt` | 291.8 GB | ODbL 1.0 |
-| Telecommunications - TN to Provinces | `10.7910/DVN/MAW5AR` | 62 daily `.txt` | 6.3 GB | ODbL 1.0 |
-| Milano Grid / Trentino Grid | `10.7910/DVN/QJWLFU`, `10.7910/DVN/FZRVSX` | 1 GeoJSON each | 3 MB, 2 MB | ODbL 1.0 |
-| Administrative Regions | `10.7910/DVN/KNMIVZ` | 2 JSON | 2 MB | ODbL 1.0 |
-| SET, Electricity (Trentino) | `10.7910/DVN/AMKZXM` | 3 CSV | 58 MB | ODbL 1.0 |
-| Social Pulse - Milano / Trentino | `10.7910/DVN/9IZALB`, `10.7910/DVN/5H0NUI` | 1 GeoJSON each | 96 MB, 9 MB | ODbL 1.0 |
-| MilanoToday / TrentoToday (news events) | `10.7910/DVN/QWOE1R`, `10.7910/DVN/NYQ23N` | 1 GeoJSON each | <1 MB | ODbL 1.0 |
-| Milano Weather Station Data, Meteotrentino Weather Station Data | `10.7910/DVN/9Z6CKW`, `10.7910/DVN/UPODNL` | 34 CSV, 1 JSON | 1 MB, 15 MB | CC BY 2.5 |
-| Precipitation - Milano / Trentino | `10.7910/DVN/S2UGMD`, `10.7910/DVN/0RZVTA` | 1 CSV, 2 CSV | 1 MB, 74 MB | CC BY 2.5 |
-| Source code | `10.7910/DVN/UTLAHU` | 3 `.py` | <1 MB | MIT |
-
-File layout of the telecom files, according to the
-[Scientific Data paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC4622222/) and public loader code.
-The `sms-call-internet` layout and the download flow below were confirmed on 2026-10-07 by
-downloading the first 1 KB of the first MI file. Setup and download steps are in
-[telecomitalia/README.md](./telecomitalia/README.md).
-
-- Tab separated, no header. Time is the start of the 10-minute slot in epoch milliseconds (UTC). Activity values are
-  scaled by an undisclosed constant, so they are relative, not counts. Rows with no activity are
-  omitted and missing measures are empty.
-- `sms-call-internet-*`: `square_id, time_interval, country_code, sms_in, sms_out, call_in, call_out, internet`.
-- `MItoMI` / `TNtoTN`: `time_interval, square_id_1, square_id_2, strength`.
-- `*-to-provinces`: `square_id, province, time_interval, cell_to_province, province_to_cell`.
-- Milan grid: 10,000 squares (100 x 100, ~235 m). Trentino grid: 6,575 squares.
-
-Row counts are not published. From file size, MI to MI is roughly 10B rows and SMS-Call-Internet MI
-is roughly 300M rows. Confirm both after the first download.
-
-**Can it be scripted? Yes, but it needs a free Harvard Dataverse account.** Anonymous `GET
-/api/access/datafile/{id}` returns `400 "You may not download this file without the required
-Guestbook response for guestbookID 96"`. The Dataverse API lets you submit the guestbook response
-programmatically, but only with an API token:
-
-1. List files: `GET /api/datasets/:persistentId/?persistentId=doi:10.7910/DVN/<DOI>` returns each
-   file's id, name and size. No auth needed.
-2. Per file, `POST /api/access/datafile/{id}` with header `X-Dataverse-key: $TOKEN` and body
-   `{"guestbookResponse": {"email": "..."}}`. This returns a signed URL; `GET` it to stream the file.
-   `POST /api/access/datafiles` with `{"fileIds": [...], "guestbookResponse": {...}}` does several
-   files at once as a zip, but Harvard caps zip size, so per-file is safer for the 6 GB files.
-3. Single `Range` requests are supported, so large files can resume after a failed download.
-
-The account itself can't sensibly be automated. Dataverse can create accounts over the API
-(`/api/builtin-users`), but only with a server-side `:BuiltinUsersKey`, and Harvard returns 403 on that endpoint.
-The other routes are the sign-up web form or login via ORCID, GitHub, Google or Microsoft, which
-would mean scripting a browser through someone's identity. So the account and the first token are
-a one-time manual step, a couple of minutes in the web UI (account name → API Token → Create Token).
-After that, the token can be maintained by script: `GET /api/users/token` returns its expiry and
-`POST /api/users/token/recreate?returnExpiration=true` swaps it for a new one, so a job can renew
-it before it lapses and write it back to the secret store.
-
-A generator would loop over the 6 telecom DOIs (plus the grids), download a day at a time and
-convert it to parquet sorted by `time_interval`. It needs the token and the email as secrets.
-That is ~717 GB down from Harvard, so it is better run on EC2 than on a laptop. ODbL allows re-hosting with
-attribution, and anything derived from the data must stay under ODbL. There is no query set, so
-the queries would have to be written by hand: hourly and daily rollups per square, top squares,
-country-code mix (roaming), origin-destination flows from MI to MI, and joins to the grid and
-weather.
+Telecom Italia Big Data Challenge was integrated on 2026-10-08 and is listed in [DATASETS.md](./DATASETS.md).
+Its source, download flow and validation are in [telecomitalia/README.md](./telecomitalia/README.md).
 
 ### CDR generators
 
@@ -219,5 +150,4 @@ could be used to calibrate the generator's daily and weekly load shape.
 2. DSB: the same idea on top of TPC-DS.
 3. LDBC SNB BI, then LSQB: the headline non-TPC addition. Its Spark datagen is a good first job for EC2 based generation.
 4. SQLStorm StackOverflow data, for query variety.
-5. Telecom Italia: real, ODbL, ~717 GB, scriptable with a Dataverse token. Generator and hand-written queries done; the full EC2 run is pending.
-6. FlowKit CDR: a home-grown, deterministic DuckDB generator for FlowKit's schema, with queries rendered by FlowKit (in progress).
+5. FlowKit CDR: a home-grown, deterministic DuckDB generator for FlowKit's schema, with queries rendered by FlowKit (in progress).
