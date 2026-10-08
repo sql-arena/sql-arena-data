@@ -32,6 +32,11 @@ def main() -> int:
         subparser.add_argument(
             "--target-mb", type=int, default=500, help="target size of each parquet file in MB, default 500"
         )
+        if name != "iceberg":
+            subparser.add_argument(
+                "--checked-in-only", action="store_true",
+                help="only upload the checked-in queries/ and schema/, without generating data",
+            )
         module.add_arguments(subparser)
     args = parser.parse_args()
 

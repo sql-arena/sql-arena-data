@@ -405,6 +405,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def generate(bucket: Bucket, args: argparse.Namespace) -> None:
+    publish_checked_in(bucket, DATASET)
+    if args.checked_in_only:
+        return
     WORK_DIR.mkdir(parents=True, exist_ok=True)
     con = db.connect(temp_dir=WORK_DIR / "duckdb_tmp")
     for name in args.tables:
@@ -412,5 +415,4 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
             load_zones(con, bucket)
         else:
             load_trips(con, bucket, TABLES[name], args.until, args.target_mb * 1_000_000)
-    publish_checked_in(bucket, DATASET)
 

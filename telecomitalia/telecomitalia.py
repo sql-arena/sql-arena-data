@@ -191,8 +191,10 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     unknown = set(args.tables) - set(TABLES)
     if unknown:
         raise SystemExit(f"Unknown tables: {', '.join(sorted(unknown))}")
-    dataverse_token()
     publish_checked_in(bucket, DATASET)
+    if args.checked_in_only:
+        return
+    dataverse_token()
     con = db.connect()
     exporter = Exporter(con, bucket, DATASET, args.target_mb, {"chunk_gb": args.chunk_gb})
     for name in args.tables:

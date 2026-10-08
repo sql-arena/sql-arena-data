@@ -57,6 +57,8 @@ def day_range(first: int, last: int) -> str:
 def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     prefix = f"{DATASET}/sf{args.sf}"
     publish_checked_in(bucket, prefix)
+    if args.checked_in_only:
+        return
     subscribers = args.sf * SUBSCRIBERS_PER_SF
     cells = max(1000, subscribers // SUBSCRIBERS_PER_CELL)
     params = dict(

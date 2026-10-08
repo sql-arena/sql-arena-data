@@ -94,6 +94,8 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         write_queries(DATASET, tables, {name: (title, q) for name, title, q in queries})
         return
     publish_checked_in(bucket, DATASET)
+    if args.checked_in_only:
+        return
     db.execute(con, SQL_DIR / "load_queries.sql", DIR=query_dir(DATASET))
     exporter = Exporter(con, bucket, DATASET, args.target_mb)
     todo = [t for w in args.workbooks or workbooks for t in workbooks[w] if not exporter.table(t.name).complete]

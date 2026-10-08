@@ -36,6 +36,8 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         write_queries(prefix, set(BASE_TABLES + STEP_TABLES), {name: (title, q) for name, title, q in queries})
         return
     publish_checked_in(bucket, prefix)
+    if args.checked_in_only:
+        return
     exporter = Exporter(con, bucket, prefix, args.target_mb, {"children": args.children})
 
     if args.children == 1:

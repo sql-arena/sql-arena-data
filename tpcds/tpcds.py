@@ -147,6 +147,8 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         write_queries(prefix, set(DIMENSIONS) | set(ORDER_BY), {name: (title, q) for name, title, q in queries})
         return
     publish_checked_in(bucket, prefix)
+    if args.checked_in_only:
+        return
     exporter = Exporter(con, bucket, prefix, args.target_mb, {"children": args.children})
     build_kit()
     db.execute(con, SQL_DIR / "schema.sql")

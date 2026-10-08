@@ -57,6 +57,8 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         extract_queries()
         return
     publish_checked_in(bucket, "job")
+    if args.checked_in_only:
+        return
 
     archive = WORK_DIR / "imdb.tgz"
     if not archive.exists():
