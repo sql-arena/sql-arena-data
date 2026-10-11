@@ -7,18 +7,15 @@ SET TimeZone = 'UTC';
 CREATE OR REPLACE MACRO rnd(k) AS md5_number_lower(k)::DOUBLE / 18446744073709551616.0;
 CREATE OR REPLACE MACRO pick(k, n) AS 1 + floor(rnd(k) * n)::BIGINT;
 
--- Share of events per hour of day: quiet nights, busy afternoons and evenings
-SET VARIABLE hour_cdf = (
-    WITH w AS (
-        SELECT unnest(range(24)) AS hour,
-               unnest([1.0, 0.6, 0.4, 0.3, 0.3, 0.5, 1.2, 2.5, 4.0, 5.0, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 6.0, 6.0,
-                       5.5, 5.0, 4.0, 3.0, 2.0]) AS weight
-    )
-    SELECT list(c ORDER BY hour) FROM (SELECT hour, sum(weight) OVER (ORDER BY hour) / sum(weight) OVER () AS c FROM w)
-);
+-- Share of a day's events in each hour: quiet nights, busy afternoons and evenings
+SET VARIABLE hour_shares = (SELECT list_transform(%%HOUR_WEIGHTS%%, w -> w / list_sum(%%HOUR_WEIGHTS%%)));
 
--- A time on day d (days after 2016-01-01): the hour follows the profile, the second within it is uniform
-CREATE OR REPLACE MACRO event_time(d, k) AS
-    (TIMESTAMP '2016-01-01' + to_days(d::INTEGER)
-     + to_seconds(len(list_filter(getvariable('hour_cdf'), c -> c <= rnd('hour|' || k))) * 3600
-                  + floor(rnd('second|' || k) * 3600)::BIGINT))::TIMESTAMPTZ;
+-- An event of slot (day d, hour h): a uniform second within that hour
+CREATE OR REPLACE MACRO event_time(d, h, k) AS
+    (TIMESTAMP '2016-01-01' + to_days(d::INTEGER) + to_seconds(h * 3600 + floor(rnd('second|' || k) * 3600)::BIGINT))::TIMESTAMPTZ;
+
+-- The events of hourly slots %%FIRST_SLOT%% to %%LAST_SLOT%% (slot = day * 24 + hour), each hour getting its share of
+-- %%PER_DAY%% events a day
+CREATE OR REPLACE MACRO slot_events(first_slot, last_slot, per_day) AS TABLE
+    SELECT day, hour, unnest(range(round(per_day * getvariable('hour_shares')[hour + 1])::BIGINT)) AS n
+    FROM (SELECT s // 24 AS day, s % 24 AS hour FROM range(first_slot, last_slot + 1) t(s));

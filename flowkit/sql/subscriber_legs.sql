@@ -2,8 +2,11 @@
 -- was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 -- Ported from FlowKit (https://github.com/Flowminder/FlowKit), flowdb/testdata/bin/generate_synthetic_data_sql.py.
 
--- Mobile data sessions on days %%FIRST_DAY%% to %%LAST_DAY%%, each by a random subscriber
+-- %%EVENT%% events (mds or topups), each by a random subscriber
 CREATE OR REPLACE TEMP TABLE _legs AS
-SELECT day, 'mds|' || day || '|' || n AS k, NULL::BOOLEAN AS outgoing,
-       pick('mds_sub|' || day || '|' || n, %%SUBSCRIBERS%%) AS sub, NULL::BIGINT AS counterpart
-FROM range(%%FIRST_DAY%%, %%LAST_DAY%% + 1) d(day), range(%%PER_DAY%%) t(n);
+SELECT day, hour, k, NULL::BOOLEAN AS outgoing, pick('%%EVENT%%_sub|' || k, %%SUBSCRIBERS%%) AS sub,
+       NULL::BIGINT AS counterpart
+FROM (
+    SELECT day, hour, '%%EVENT%%|' || day || '|' || hour || '|' || n AS k
+    FROM slot_events(%%FIRST_SLOT%%, %%LAST_SLOT%%, %%PER_DAY%%)
+);

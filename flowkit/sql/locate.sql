@@ -12,7 +12,7 @@ WITH homed AS (
 drawn AS (
     SELECT *, rnd('away|' || lk) < %%OUT_OF_AREA%% AS away, rnd('near|' || lk) AS near FROM homed
 )
-SELECT d.k, d.outgoing, md5(d.k) AS id, event_time(d.day, d.k) AS datetime,
+SELECT d.k, d.outgoing, md5(d.k) AS id, event_time(d.day, d.hour, d.k) AS datetime,
        s.msisdn, c.msisdn AS msisdn_counterpart,
        md5('cell|' || CASE WHEN d.away THEN pick('anywhere|' || d.lk, %%CELLS%%) ELSE nb.neighbour END) AS location_id,
        s.imsi, s.imei, s.tac

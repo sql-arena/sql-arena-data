@@ -63,7 +63,7 @@ and keeps its model:
 Changes from upstream:
 
 - **Deterministic.** Every random draw is `md5` of a salt and the row's key, so every run and scale factor is reproducible.
-- **Scale.** SF N is N x 100,000 subscribers, with one cell per 100 subscribers (at least 1,000) and three cells per site. Per subscriber and day there are 3 calls, 4 SMS, 5 data sessions and a 10% chance of a topup; upstream sets fixed totals per day. `--days` (default 31) sets the length.
+- **Scale.** SF N is N x 100,000 subscribers, with one cell per 100 subscribers (at least 1,000) and three cells per site. Per subscriber and day there are 3 calls, 4 SMS, 5 data sessions and 0.1 topups, each by a random subscriber; upstream sets fixed totals per day. `--days` (default 31) sets the length.
 - **Geography.** A synthetic country replaces GADM, whose boundaries cannot be redistributed: 8 provinces, 72 districts and 648 municipalities on a fixed grid. Pcodes follow GADM's style (`SYN.3.4.5_1`). Municipalities have a heavy-tailed population weight, so a few cities hold most sites and subscribers, while many rural municipalities have no cell.
 - **Hours.** Events follow an hourly profile (quiet nights, busy evenings) instead of being uniform over the day.
 - **Topups** are added. The optional "disaster" displacement is not ported.
@@ -82,7 +82,7 @@ uv run generate.py flowkit --sf 1 --days 7 --no-upload
 
 Published scale factors: SF1 and SF100.
 
-Event tables are generated in chunks of consecutive days (`--days-per-chunk`, by default about one 500 MB file each), sorted by `datetime`, and resumed per chunk through `_manifest.json`. The static tables are single files.
+Event tables are generated in chunks of consecutive hours, about one 500 MB file each, sorted by `datetime`, and resumed per chunk through `_manifest.json`. The static tables are single files.
 
 Event volume grows linearly in subscribers x days. One process generates about 60,000 event rows per second, and part of each chunk (the parquet, CSV and zip writing) is single threaded. Table names can be passed to split a large run over parallel processes on one machine; each process repeats the cheap setup. SF100 is 5.9 billion event rows, so split it, for example:
 
@@ -92,7 +92,7 @@ uv run generate.py flowkit --sf 100 sms                                         
 uv run generate.py flowkit --sf 100 mds topups                                                 # 1.6 billion rows
 ```
 
-At SF100 a chunk is one day: up to 80 million `sms` rows in DuckDB at once. Give each process about 64 GB of RAM.
+A chunk is at least one hour, so the busiest SF100 hour of `sms` (about 5.6 million rows) is the largest chunk in DuckDB at once.
 
 ## Queries
 
