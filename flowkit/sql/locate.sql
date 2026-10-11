@@ -20,4 +20,5 @@ FROM drawn d
 JOIN subs s ON s.sub = d.sub
 LEFT JOIN subs c ON c.sub = d.counterpart
 JOIN neighbour_counts nc ON nc.cell_id = d.home
-LEFT JOIN neighbours nb ON nb.cell_id = d.home AND nb.k = 1 + floor(d.near * nc.n)::BIGINT AND NOT d.away;
+-- Away legs get a NULL key rather than a NOT d.away condition, which would turn this into a nested loop join
+LEFT JOIN neighbours nb ON nb.cell_id = d.home AND nb.k = CASE WHEN NOT d.away THEN 1 + floor(d.near * nc.n)::BIGINT END;
