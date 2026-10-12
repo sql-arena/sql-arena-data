@@ -41,7 +41,7 @@ Complete tables are skipped (`_manifest.json`), so a rerun only downloads the ta
 
 ## Queries
 
-`publicbi/queries/<Workbook>_<N>.sql`: the 646 queries from `benchmark/<workbook>/queries/<N>.sql` in the repository at the pinned commit. Tables are qualified with the namespace, e.g. `publicbi."Arade_1"`. Column references like `"Arade_1"."F3"` are unchanged. The queries are in MonetDB's dialect, and 15 of them use functions DuckDB lacks (e.g. `locate`, `splitpart`). Extracted once and committed:
+`publicbi/queries/<Workbook>_<N>.sql`: the 646 queries from `benchmark/<workbook>/queries/<N>.sql` in the repository at the pinned commit. Tables are qualified with the namespace, e.g. `publicbi."Arade_1"`. Column references like `"Arade_1"."F3"` are unchanged. The queries are in MonetDB's dialect, except that `locate(needle, haystack)` becomes `strpos(haystack, needle)` and `splitpart` becomes `split_part`, which DuckDB lacks. Extracted once and committed:
 
 ```bash
 uv run generate.py publicbi --extract-queries
