@@ -84,8 +84,6 @@ FROM (
           ) AS foo
           WHERE
             location_id IS NOT NULL AND location_id <> ''
-          ORDER BY
-            time NULLS LAST
         ) AS subscriber_locs
         GROUP BY
           subscriber_locs.subscriber,
@@ -99,4 +97,7 @@ FROM (
     pcod
 ) AS agged
 WHERE
-  agged.value > 15;
+  agged.value > 15
+ORDER BY
+  pcod,
+  value;

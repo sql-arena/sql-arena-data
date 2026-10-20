@@ -25,6 +25,10 @@ ROOT = Path(__file__).resolve().parent.parent
 COMMIT = "24d88247d57987fe33f6b8915540d7bf09b58033"
 RENDERED_DIR = ROOT / "temp" / "flowkit" / "rendered"
 SOURCE_SCHEMAS = {"events", "infrastructure", "geography"}
+# Queries whose subquery ORDER BY is dropped where the order is discarded above it, and whose result is ordered by
+# its columns instead. DuckDB keeps such a sort, and in q32 it is a sort of every call and SMS in the week, which
+# runs out of memory at SF100.
+DROP_ORDER = {"q32"}
 
 LICENCE = (
     "Rendered by Flowminder FlowKit flowmachine (https://github.com/Flowminder/FlowKit, commit {commit})\n"
@@ -72,7 +76,7 @@ def load_schema(schema_dir: Path) -> dict[str, set[str]]:
     return tables
 
 
-def rewrite_sql(sql: str, namespace: str, schema: dict[str, set[str]]) -> str:
+def rewrite_sql(sql: str, namespace: str, schema: dict[str, set[str]], drop_order: bool = False) -> str:
     import sqlglot
     from sqlglot import exp
     from sqlglot.transforms import eliminate_distinct_on
@@ -92,6 +96,10 @@ def rewrite_sql(sql: str, namespace: str, schema: dict[str, set[str]]) -> str:
     tree = tree.transform(_mode)
     tree = _histogram(tree)
     tree = tree.transform(eliminate_distinct_on)
+    if drop_order:
+        tree = _drop_lost_order(tree)
+        if not tree.args.get("order"):
+            tree = tree.order_by(*(exp.column(e.alias_or_name) for e in tree.expressions))
     if tree.find(exp.TimeToStr):
         raise ValueError(f"to_char left after rewrite: {tree.find(exp.TimeToStr).sql()}")
     leftover = {f.sql_name() if not isinstance(f, exp.Anonymous) else f.name for f in tree.find_all(exp.Func)}
@@ -244,6 +252,28 @@ def _histogram(tree):
     return tree
 
 
+def _drop_lost_order(tree):
+    """Drop a subquery's ORDER BY when a join, aggregate, window or sort above it discards the order.
+
+    An ORDER BY that still sets the order of the result, under plain projections and filters, stays.
+    """
+    from sqlglot import exp
+
+    def discards(select) -> bool:
+        return bool(select.args.get("group") or select.args.get("joins") or select.args.get("order")
+                    or any(e.find(exp.AggFunc, exp.Window) for e in select.expressions))
+
+    for select in list(tree.find_all(exp.Select)):
+        if select is tree or not select.args.get("order") or select.args.get("limit") or select.args.get("offset"):
+            continue
+        above = select.parent_select
+        while above is not None and not discards(above):
+            above = above.parent_select
+        if above is not None:
+            select.set("order", None)
+    return tree
+
+
 def _qualify(node, namespace: str):
     from sqlglot import exp
 
@@ -381,7 +411,7 @@ def rewrite(in_dir: Path, out_dir: Path, namespace: str, schema: dict[str, set[s
         header = [title, "", LICENCE.format(commit=COMMIT)]
         if spec:
             header += ["", "FlowAPI query spec:", json.dumps(spec)]
-        body = rewrite_sql(path.read_text(), namespace, schema)
+        body = rewrite_sql(path.read_text(), namespace, schema, path.stem in DROP_ORDER)
         comment = "/* " + "\n   ".join(line for line in "\n".join(header).splitlines()) + " */"
         (out_dir / path.name).write_text(f"{comment}\n{body};\n")
         print(f"rewrote {path.name}")

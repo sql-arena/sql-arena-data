@@ -116,6 +116,7 @@ Each file's header carries the MPL-2.0 notice, the FlowKit commit and the FlowAP
 - Histogram `numrange`/`generate_series` becomes a `VALUES` list of bounds.
 - Radius of gyration's `array_agg`/`unnest` becomes window averages. PostGIS geography distance becomes haversine.
 - FlowDB-only columns are dropped, using `flowkit/sf1/schema/`. Tables are qualified with the namespace.
+- In q32, the `ORDER BY time` of a subquery that a `GROUP BY` consumes is dropped, and the result is ordered by `pcod, value`. DuckDB sorts the subquery anyway, which at SF100 is every call and SMS in the week and runs out of memory.
 
 **Verification.** On FlowDB's own test data, each original was run in Postgres and its rewrite in DuckDB, over a mirror with `cell_region` computed by `st_within`. 29 of 32 return identical results. The other three come from the same 0.10% difference between haversine and PostGIS's spheroid distance: q13 (radius of gyration) and q22 (displacement) differ by at most that much, and in q24 two subscribers land in the adjacent histogram bin. All 32 run on generated SF1 data (7 days) in DuckDB, in 3.5 s or less each.
 
