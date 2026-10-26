@@ -58,8 +58,10 @@ The allowed data types are those supported by Iceberg.
 
 ## Queries
 
-SQL queries against the dataset, with all parameters replaced by actual values, are checked into
-this repo and published unchanged to the same path in the bucket:
+SQL queries against the dataset, with all parameters replaced by actual values, are committed to
+this repo, which is authoritative for them. They are published unchanged to the same path in the bucket,
+an upload stops while a query or schema file is uncommitted, and files the repo no longer has are
+removed from the bucket:
 
 `<dataset path>/queries/<query_name>.sql`
 

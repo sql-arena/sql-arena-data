@@ -1,8 +1,10 @@
 """Checked-in files: query sets at <dataset path>/queries/<name>.sql and DDL at <dataset path>/schema/<table>.sql.
 
-Both are uploaded unchanged to the same key in the bucket.
+The repo is authoritative: both are uploaded unchanged to the same key in the bucket, only once committed, and
+files the repo no longer has are removed from the bucket.
 """
 
+import subprocess
 from pathlib import Path
 
 import duckdb
@@ -18,14 +20,25 @@ def query_dir(prefix: str) -> Path:
 
 
 def publish_checked_in(bucket: Bucket, prefix: str) -> None:
-    """Upload the checked-in queries and schema of a dataset path."""
+    """Upload the committed queries and schema of a dataset path, and remove bucket files the repo doesn't have.
+
+    Uncommitted changes stop an upload to the bucket. A test run with --no-upload publishes the working tree.
+    """
+    if bucket.upload:
+        paths = [f"{prefix}/{folder}" for folder in CHECKED_IN]
+        changed = subprocess.run(["git", "status", "--porcelain", "--", *paths], cwd=REPO_ROOT,
+                                 capture_output=True, text=True, check=True).stdout
+        if changed:
+            raise SystemExit(f"{prefix}: commit the queries and schema before uploading them:\n{changed}")
     for folder in CHECKED_IN:
         files = sorted((REPO_ROOT / prefix / folder).glob("*.sql"))
         if not files:
             log(f"{prefix}: no checked-in {folder} to publish")
             continue
         bucket.put_files([(f, f"{prefix}/{folder}/{f.name}") for f in files], keep=True).result()
-        log(f"{prefix}/{folder}: {len(files)} files uploaded")
+        stale = sorted(set(bucket.keys(f"{prefix}/{folder}")) - {f"{prefix}/{folder}/{f.name}" for f in files})
+        bucket.delete(stale)
+        log(f"{prefix}/{folder}: {len(files)} files uploaded" + (f", {len(stale)} removed" if stale else ""))
 
 
 def _base_tables(node: object) -> list[dict]:
