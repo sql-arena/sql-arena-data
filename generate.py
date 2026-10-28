@@ -10,6 +10,7 @@ Usage:
 import argparse
 import sys
 
+from bots import bots
 from common.bucket import Bucket
 from flowkit import flowkit
 from iceberg import iceberg
@@ -20,7 +21,7 @@ from telecomitalia import telecomitalia
 from tpcds import tpcds
 from tpch import tpch
 
-GENERATORS = {"flowkit": flowkit, "job": job, "nyctaxi": nyctaxi, "publicbi": publicbi, "tpch": tpch, "tpcds": tpcds, "telecomitalia": telecomitalia, "iceberg": iceberg}
+GENERATORS = {"bots": bots, "flowkit": flowkit, "job": job, "nyctaxi": nyctaxi, "publicbi": publicbi, "tpch": tpch, "tpcds": tpcds, "telecomitalia": telecomitalia, "iceberg": iceberg}
 
 
 def main() -> int:

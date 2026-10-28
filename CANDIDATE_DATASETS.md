@@ -135,6 +135,30 @@ dimension. The query set would cover billing rollups, top talkers, roaming, call
 windows and "who called whom" chains. The Telecom Italia activity curves (per 10 minutes, per square)
 could be used to calibrate the generator's daily and weekly load shape.
 
+## Needle-in-a-Haystack
+
+Datasets whose realistic queries are point lookups or very selective filters: one account, user, host, IP, hash or
+address, or a substring (`LIKE '%...%'`) in long text. Researched 2026-10-26; ✓ marks a licence or size checked
+at the source that day.
+
+Security and threat hunting is where these queries are the main workload. Detection rules and hunts are filters on
+single events, mostly with leading-wildcard `LIKE`. Advertising has the access pattern in production (per-user
+deletion, click-fraud lookups by IP), but the public ad datasets are ML click-through sets with hashed features
+(Criteo), Kaggle competition data that cannot be redistributed (Avazu, TalkingData), or have no licence (iPinYou).
+ClickBench `hits` is the only real web analytics set, and 6 to 11 of its 43 queries are needle style.
+
+| Dataset | What it is | Size | Queries? | Queries | Licence | Notes |
+|---|---|---|---|---|---|---|
+| [Splunk BOTS v1](https://github.com/splunk/botsv1) | Boss of the SOC capture-the-flag: real attack on a small company network in August 2016, with Windows event logs, Sysmon, firewall, Suricata and network stream logs | JSON export 12.1 GB gzip ✓, ~120 GB raw, one file per sourcetype; tens of millions of events (est.) | Partial | 32 CTF questions with known answers (about 25 usable without outside lookups), written as SPL in write-ups; [Sigma](https://github.com/SigmaHQ/sigma) rules rendered to SQL by [Zircolite](https://github.com/wagga40/Zircolite) (2,840 Sysmon rules, 92% leading-wildcard `LIKE` ✓); 81 Spark SQL queries in the [ThreatHunter-Playbook](https://github.com/OTRF/ThreatHunter-Playbook) | CC0 ✓; Sigma rules DRL 1.1; Playbook MIT ✓ | Best needle candidate. Fixed size, but can be scaled by replicating benign rows with shifted time and hosts, keeping attack rows unique. Sigma matching is case-insensitive, so rules need `ILIKE` or `lower()` outside SQLite. BOTS v2 and v3 are CC0 too, but only as pre-indexed Splunk buckets. |
+| [Ethereum transactions](https://registry.opendata.aws/aws-public-blockchain/) (AWS Public Blockchain) | Every Ethereum (and Bitcoin) transaction, log and token transfer | `eth/transactions` 1.5 TB Parquet ✓, `eth/logs` 1.3 TB, `btc/transactions` 2.2 TB; grows daily | No | Would write ~20: transactions of an address, by hash, token transfers of a wallet, calldata prefix | Public ledger data; re-hosting looks safe but confirm with AWS Open Data | Flat Parquet partitioned by date. Extreme skew from one-transaction wallets to exchange wallets with tens of millions of rows. Bitcoin inputs and outputs are nested arrays. |
+| [OpenSearch big5](https://github.com/opensearch-project/opensearch-benchmark-workloads/tree/main/big5) | Synthetic log documents with keyword fields and word-salad messages | 116M docs (6 GB bz2) or 1.16B docs (1.07 TB JSON) ✓ | Partial | About 8 to 10 term and token queries among ~45 operations, in Query DSL and PPL | Apache-2.0 ✓; Elastic's generator is Elastic License 2.0 | Re-host the published corpus, don't regenerate. Nested JSON with a fixed schema, about 25 columns flat. Low-entropy text. |
+| [LANL Comprehensive Cyber Events](https://csr.lanl.gov/data/cyber1/) | 58 days of authentication, process, flow and DNS events from LANL's network | 1.65B events ✓, ~12 GB compressed | No | Would write them from the red-team file (~749 compromise events) as needles | CC0 ✓ | Flat CSV. Anonymised (`U748@DOM1`, `C17693`), so no text to search. |
+| [IBM AML transactions](https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml) | Synthetic bank transfers with labelled laundering patterns | Six sets from 5M to 180M rows ✓ | No | Would write account statements and counterparties, with the pattern files as parameters | CDLA-Sharing 1.0 ✓ | Flat CSV. Generator lineage is AMLSim (Apache-2.0). |
+
+Already listed elsewhere: ClickBench `hits` (Q19 `UserID` lookup, Q20 to Q23 `URL LIKE '%google%'`, Q40 and Q41 hash
+equality), GH Archive (13 of ~50 ClickHouse queries filter one repo or user) and Wikipedia pageviews (one article over
+time). LDBC SNB Interactive short reads (IS1 to IS7) are point lookups that come with the SNB datagen.
+
 ## Not Suitable
 
 | Dataset | Reason |
@@ -142,6 +166,13 @@ could be used to calibrate the generator's daily and weekly load shape.
 | Amazon customer reviews | Research-only licence; cannot be re-hosted publicly. |
 | [LDBC FinBench](https://ldbcouncil.org/benchmarks/finbench/) | Tops out at ~6 GB and the queries are graph queries, not SQL. |
 | Spider 2.0 / BIRD | Text-to-SQL benchmarks; data is small or licensed through Snowflake and BigQuery marketplaces. |
+| Loghub | Licence limits use to research and academic work. |
+| CIC-IDS2017, UNSW-NB15 | Labelled flow features for ML classifiers; no redistribution licence, or no commercial use. |
+| Criteo 1TB click logs | Features hashed to 32 bits, so needle queries would be arbitrary; CC BY-NC-SA. |
+| Avazu, TalkingData AdTrack | Kaggle competition data; cannot be redistributed. |
+| iPinYou RTB | Right columns for ad needles (user ID, IP, URL), but no licence anywhere. |
+| Common Crawl URL index | Terms of use forbid redistribution, and the bucket needs credentials. |
+| OTRF Security-Datasets, Splunk attack_data | Too small to be the haystack; MIT and Apache-2.0, so usable as extra needles mixed into one. |
 | [Redset / Redbench](https://arxiv.org/abs/2511.13059) | Redshift workload traces, not data. Worth revisiting to build realistic query streams over datasets we already host. |
 
 ## Suggested Order
@@ -151,3 +182,4 @@ could be used to calibrate the generator's daily and weekly load shape.
 3. LDBC SNB BI, then LSQB: the headline non-TPC addition. Its Spark datagen is a good first job for EC2 based generation.
 4. SQLStorm StackOverflow data, for query variety.
 5. FlowKit CDR: a home-grown, deterministic DuckDB generator for FlowKit's schema, with queries rendered by FlowKit (in progress).
+6. Splunk BOTS v1: the needle-in-a-haystack workload, with Sigma rules and BOTS questions as queries (in progress).
