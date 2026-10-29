@@ -159,6 +159,59 @@ Already listed elsewhere: ClickBench `hits` (Q19 `UserID` lookup, Q20 to Q23 `UR
 equality), GH Archive (13 of ~50 ClickHouse queries filter one repo or user) and Wikipedia pageviews (one article over
 time). LDBC SNB Interactive short reads (IS1 to IS7) are point lookups that come with the SNB datagen.
 
+## Agent Observability
+
+Traces of LLM agents: one row per span (model call, tool call, retrieval), with prompt and completion text, token
+counts, cost and latency. The tools that store them (Langfuse, Phoenix, LangSmith) mostly run trace lookups, time
+bucketed latency and cost rollups, top-N by cost, filters on JSON attributes, and substring search in prompt text.
+No database benchmark has a published query set for this apart from AgentLogsBench.
+
+| Dataset | What it is | Size | Queries? | Queries | Licence | Notes |
+|---|---|---|---|---|---|---|
+| [AgentLogsBench](https://github.com/velodb/agentlogsbench) (VeloDB) | Synthetic Claude Code-style agent traces, one table `agent_observations`, made by `tooling/generator.py` after [ZClawBench](https://huggingface.co/datasets/zai-org/ZClawBench); modelled on ClickBench and JSONBench | 1m, 10m and 100m rows (100m is the leaderboard tier, 1B planned) as `agent_observations_NNNN.ndjson.gz` at `s3://bench-dataset/agentlogs/` (us-east-1); the 1m tier is 998,799 rows in 588 MB gzip ✓ | Yes | 20 queries in `common/queries/queries.sql`, parameters per tier in `common/context/query_context_{1m,10m,100m}.json`; adapters for ClickHouse, Doris, Elasticsearch, OpenSearch, PostgreSQL and DuckDB (the full-scan baseline) | Apache-2.0 ✓ | Read at commit `9c5665e` (2026-08-23). The text functions (`TEXT_HAS_TOKEN`, `TEXT_HAS_PHRASE`, `TEXT_TOKEN_SCORE`) are token matches in ClickHouse but substring matches in DuckDB, so results can differ (Q19). The README says inputs are 5 KB to 1 MB, but the 1m tier averages about 380 bytes of input and 970 bytes of output. |
+
+The table has `event_time`, `biz_date`, `trace_id`, `session_id`, `observation_id`, `parent_observation_id`, `seq_no`,
+`type` (GENERATION, TOOL, RETRIEVAL, REASONING, EVENT, ...), `status`, `tenant`, `app`, `environment`,
+`task_category`, `trace_archetype`, `model`, `tool_name`, `input` and `output` text, `input_tokens`,
+`output_tokens`, `total_cost`, `latency_ms`, and a JSON `payload` with `provider.*`, `tool_result.*`, `attr.*`
+(release ring, customer tier, prompt template version, traffic cluster, request key, ...), `otel.*`, `langfuse.*` and
+`mlflow.*`.
+
+Query shapes:
+
+- Trace lookups: Q03, and Q04 that self-joins children to their parents.
+- Filter, then `ORDER BY event_time DESC LIMIT 50`: Q01, Q07, Q14, Q16, Q17.
+- Text search ranked by score, `LIMIT 50`: Q05, Q08, Q11; Q13 and Q15 OR three phrases, Q14 ORs five `LIKE` patterns.
+- Top 20 or 50 aggregates: Q02 groups by `trace_id` (high cardinality), Q06 has no `WHERE`; Q09, Q10, Q12, Q18 to
+  Q20 group by tool, `payload` JSON paths or `attr` fields, and Q19 counts distinct incident traces.
+
+Selectivity, measured on the 1m tier in DuckDB by evaluating every predicate per row, before `LIMIT`, with text
+matched as whole tokens (as ClickHouse does):
+
+| Query | Rows passing `WHERE` | Kind |
+|---|---|---|
+| Q03, Q04 | 3 rows | needle (one trace) |
+| Q17 | 3 rows | needle (one `request_key`) |
+| Q05 | 168 rows, 0.017% | near needle |
+| Q14, Q11, Q16, Q13, Q15, Q08 | 0.30%, 0.39%, 0.65%, 1.16%, 1.73%, 2.44% | selective |
+| Q01, Q07, Q10 | 7.07%, 19.8%, 20.7% | mid-range |
+| Q09, Q19, Q12, Q18, Q20 | 37.6%, 58.8% (63.1% as substrings), 75.3%, 77.0%, 94.0% | scan |
+| Q02, Q06 | 100% | full scan |
+
+What single predicates select:
+
+- The date range never prunes: the parameters are the data's own first and last `biz_date` at every tier, and the
+  generator spreads traces round-robin over the same ~369 days from 2026-03-17, so every file holds every date.
+- `tenant = 'tenant_005'` 12.1% (the largest of 18), `app = 'app_002'` 13.7%, `status = 'error'` 7.0%,
+  `environment = 'prod'` 84%, `type` TOOL 37.6% and GENERATION 20.7% (the `IN` lists 75 to 94%), Q07's
+  `prompt_template_version IN (...)` 100%.
+- Text: "unable", "open" and "unable to open" each about 20% and fully correlated, so the phrase adds nothing;
+  "error" 23.6% as a substring but 3.8% as a token; "timeout awaiting headers" 65 rows.
+- `payload` attributes: `request_key` 3 rows, `traffic_cluster` 26%, `customer_tier` 49%.
+
+Only the 1m tier was measured. The generator makes each day denser as the tier grows, so the proportions should hold,
+and the needles stay a few rows.
+
 ## Not Suitable
 
 | Dataset | Reason |
