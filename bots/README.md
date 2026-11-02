@@ -52,7 +52,8 @@ Columns are listed in `bots/fields.csv` (table, column, type, source fields) and
 - Names are lower case snake_case: `CommandLine` is `commandline`, `ports{}.port` is `ports_port`.
   A reserved word gets a trailing `_` (`user_`, `from_`), and names are cut to 63 characters.
 - A field and its multi-valued form (`cs_version` and `cs_version{}`) never occur in the same event, so they
-  share a column. Multiple values are joined with newlines.
+  share a column. Multiple values are joined with newlines. So do fields that differ only in punctuation,
+  such as Suricata's `alert.gid` and `alert_gid`.
 - Fields that differ only in case are different fields, such as Sysmon's `Signature` (the code signer) and
   Splunk's `signature` (the event description). The all-lower-case one is Splunk's and is prefixed `cim_`.
 - A column is `BIGINT` or `DOUBLE` when every value of it is an integer or decimal, else `VARCHAR`.

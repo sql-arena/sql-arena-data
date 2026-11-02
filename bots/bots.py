@@ -115,7 +115,8 @@ def column_type(stats: list[tuple]) -> str:
 def table_fields(table: str, keys: list[tuple], reserved: set[str]) -> list[Field]:
     """The columns of a table from its profiled keys (key, n, arrays, integers, decimals).
 
-    A field and its multi-valued form (cs_version, cs_version{}) never occur in the same event, so they share a column.
+    A field and its multi-valued form (cs_version, cs_version{}) never occur in the same event, so they share a column,
+    as do fields that differ only in punctuation (Suricata's alert.gid and alert_gid).
     Fields that differ only in case (Signature from Sysmon, signature added by Splunk) are different fields:
     the all-lower-case one is Splunk's and is prefixed cim_.
     """
@@ -128,7 +129,7 @@ def table_fields(table: str, keys: list[tuple], reserved: set[str]) -> list[Fiel
     fields = []
     for column, stats in sorted(groups.items()):
         spellings = {s[0].replace("{}", "") for s in stats}
-        if len(spellings) > 1:
+        if len({s.lower() for s in spellings}) < len(spellings):
             splunk = [s for s in stats if s[0].replace("{}", "").islower()]
             others = [s for s in stats if s not in splunk]
             fields.append(Field(table, f"cim_{column.rstrip('_')}", column_type(splunk), [s[0] for s in splunk]))
@@ -137,6 +138,8 @@ def table_fields(table: str, keys: list[tuple], reserved: set[str]) -> list[Fiel
     names = [f.column for f in fields]
     if len(set(names)) != len(names):
         raise SystemExit(f"{DATASET}/{table}: duplicate columns {sorted({n for n in names if names.count(n) > 1})}")
+    if any(not f.keys for f in fields):
+        raise SystemExit(f"{DATASET}/{table}: columns without fields {[f.column for f in fields if not f.keys]}")
     return sorted(fields, key=lambda f: f.column)
 
 
