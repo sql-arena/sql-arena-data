@@ -30,6 +30,17 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("tables", nargs="*", default=DIMENSIONS + FACTS, help="tables to generate, default all")
     parser.add_argument("--sf", type=int, default=1, help="scale factor: about 100,000 agent runs a year each")
     parser.add_argument("--days", type=int, default=DAYS, help=f"days from {FIRST_DATE}, default {DAYS}; fewer for tests")
+    parser.add_argument("--parquet-only", action="store_true", help="no csv.zip copies, for large scale factors")
+    parser.add_argument("--shard", type=shard, help="K/N: generate every N-th chunk from chunk K, to run N at once")
+    parser.add_argument("--merge-shards", type=int, metavar="N",
+                        help="combine the manifests of N complete shards, instead of generating")
+
+
+def shard(value: str) -> tuple[int, int]:
+    k, n = (int(x) for x in value.split("/"))
+    if not 0 <= k < n:
+        raise argparse.ArgumentTypeError("K/N needs 0 <= K < N")
+    return k, n
 
 
 def day_chunks(sessions: list[float], per_chunk: float) -> list[tuple[int, int]]:
@@ -54,7 +65,9 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     if not 1 <= args.days <= DAYS:
         raise SystemExit(f"--days must be 1 to {DAYS}")
     prefix = f"{DATASET}/sf{args.sf}"
-    publish_checked_in(bucket, prefix)
+    first_shard = args.shard is None or args.shard[0] == 0
+    if first_shard:
+        publish_checked_in(bucket, prefix)
     if args.checked_in_only:
         return
     params = dict(
@@ -63,19 +76,32 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     )
     con = db.connect()
     db.execute(con, SQL_DIR / "setup.sql", **params)
-    exporter = Exporter(con, bucket, prefix, args.target_mb, {"days": args.days})
+    settings = {"days": args.days} | ({"csv": False} if args.parquet_only else {})
+    csv = not args.parquet_only
+    exporter = Exporter(con, bucket, prefix, args.target_mb, settings, csv=csv)
 
-    db.execute(con, SQL_DIR / "dimensions.sql")
-    for table in DIMENSIONS:
-        if table in args.tables:
-            exporter.export(table, f"_export_{table}")
+    if args.merge_shards:
+        pending = [t for t in FACTS if t in args.tables and not exporter.table(t).merge_shards(args.merge_shards)]
+        if pending:
+            raise SystemExit(f"{prefix}: shards of {', '.join(pending)} are not all complete yet")
+        return
 
-    exports = {t: exporter.table(t) for t in FACTS if t in args.tables}
+    if first_shard:
+        db.execute(con, SQL_DIR / "dimensions.sql")
+        for table in DIMENSIONS:
+            if table in args.tables:
+                exporter.export(table, f"_export_{table}")
+
+    shard_exporter = Exporter(con, bucket, prefix, args.target_mb, settings, csv=csv, shard=args.shard)
+    exports = {t: shard_exporter.table(t) for t in FACTS if t in args.tables}
     exports = {t: e for t, e in exports.items() if not e.complete}
     sessions = [n for (n,) in db.fetch_all(con, SQL_DIR / "days.sql", **params)]
     chunks = day_chunks(sessions, args.target_mb * 1_000_000 / BYTES_PER_SESSION)
     log(f"{prefix}: about {sum(sessions):,.0f} sessions in {args.days} days, {len(chunks)} chunks")
-    for first, last in chunks:
+    # Shards take every n-th chunk, so each gets busy and quiet days alike. Their parts are named by the chunk's
+    # first day, which keeps file names in time order.
+    k, n = args.shard or (0, 1)
+    for first, last in chunks[k::n]:
         name = day_range(first, last)
         if all(e.chunk_done(name) for e in exports.values()):
             continue
@@ -83,6 +109,7 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         for sql in ["traces.sql", "spans.sql", "scores.sql", "export.sql"]:
             db.execute(con, SQL_DIR / sql, **params, FIRST_DAY=first, LAST_DAY=last)
         for table, export in exports.items():
-            export.write(f"_export_{table}", name, single_chunk=len(chunks) == 1)
+            stem = f"{table}_{first:03}" if args.shard else None
+            export.write(f"_export_{table}", name, single_chunk=len(chunks) == 1, stem=stem)
     for export in exports.values():
         export.finish()

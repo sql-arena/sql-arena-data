@@ -26,6 +26,7 @@ pyiceberg.io.pyarrow.UTC_ALIASES.add("Etc/UCT")
 DATASETS = {
     "agenttelemetry_sf1": "agenttelemetry/sf1",
     "agenttelemetry_sf10": "agenttelemetry/sf10",
+    "agenttelemetry_sf1000": "agenttelemetry/sf1000",
     "bots_sf1": "bots/sf1",
     "bots_sf10": "bots/sf10",
     "flowkit_sf1": "flowkit/sf1",

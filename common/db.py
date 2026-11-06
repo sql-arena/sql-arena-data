@@ -81,13 +81,15 @@ def write_parquet(con: duckdb.DuckDBPyConnection, source: str, path: Path) -> No
             writer.write_batch(batch, row_group_size=ROW_GROUP_ROWS)
 
 
-def write_part(con: duckdb.DuckDBPyConnection, source: str, out_dir: Path, stem: str) -> list[Path]:
-    """Write a table (or a parenthesised query) as <stem>.parquet and <stem>.csv.zip in out_dir."""
+def write_part(con: duckdb.DuckDBPyConnection, source: str, out_dir: Path, stem: str, csv: bool = True) -> list[Path]:
+    """Write a table (or a parenthesised query) as <stem>.parquet and, unless not csv, <stem>.csv.zip in out_dir."""
     out_dir.mkdir(parents=True, exist_ok=True)
     parquet_path = out_dir / f"{stem}.parquet"
     csv_path = out_dir / f"{stem}.csv"
     zip_path = out_dir / f"{stem}.csv.zip"
     write_parquet(con, source, parquet_path)
+    if not csv:
+        return [parquet_path]
     execute(con, SQL_DIR / "write_csv.sql", SOURCE=source, CSV=csv_path)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(csv_path, csv_path.name)

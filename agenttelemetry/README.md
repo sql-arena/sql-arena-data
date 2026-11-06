@@ -196,14 +196,24 @@ The queries use DuckDB function names (`quantile_cont`, `arg_min`, `json_extract
 
 ```text
 agenttelemetry/sf<N>/<table>/<table>[_NNNN].{parquet,csv.zip}
+agenttelemetry/sf1000/<table>/<table>_<DDD>_<NN>.parquet     part NN of the chunk starting on day DDD of the year
 agenttelemetry/sf<N>/queries/, agenttelemetry/sf<N>/schema/
 ```
+
+SF1 and SF10 have parquet and csv.zip. SF1000 is parquet only: 986 million spans, about 760 GB of parquet.
 
 ```bash
 uv run generate.py agenttelemetry --sf 1                         # 992,000 spans, 750 MB of span parquet
 uv run generate.py agenttelemetry --sf 1 --days 14 --no-upload   # a quick test
+# SF1000 in 6 shards, run at the same time (3 on each of two machines), then combined
+uv run generate.py agenttelemetry --sf 1000 --parquet-only --shard 0/6    # ... to --shard 5/6
+uv run generate.py agenttelemetry --sf 1000 --parquet-only --merge-shards 6
 ```
 
 The fact tables are generated in chunks of consecutive days, about one 500 MB spans file each, and resumed per chunk
-through `_manifest.json`. On a laptop SF1 takes about 2 CPU minutes and SF10 about 35, plus the upload. Size grows
-linearly with SF.
+through `_manifest.json`. At SF1000 a chunk is one day of several files. On a laptop SF1 takes about 2 CPU minutes
+and SF10 about 35, plus the upload. Size grows linearly with SF.
+
+`--shard K/N` generates every N-th chunk from chunk K and resumes through its own `_manifest_K_of_N.json`. The data
+is the same as unsharded, as every day is generated from its own seeds. Shard 0 also writes the dimensions and the
+queries and schema. Once all shards are complete, `--merge-shards N` combines their manifests into `_manifest.json`.
