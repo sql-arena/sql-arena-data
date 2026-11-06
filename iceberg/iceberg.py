@@ -12,14 +12,20 @@ import tempfile
 from pathlib import Path
 
 import pyarrow.parquet as pq
+import pyiceberg.io.pyarrow
 from pyarrow import fs
 from pyiceberg.catalog.sql import SqlCatalog
 
 from common import TEMP_DIR, log
 from common.bucket import BUCKET, Bucket, session
 
+# Iceberg takes only some names for UTC; BOTS parquet made on EC2 has the machine's zone name, Etc/UCT
+pyiceberg.io.pyarrow.UTC_ALIASES.add("Etc/UCT")
+
 # Iceberg namespace -> object prefix holding one folder per table
 DATASETS = {
+    "agenttelemetry_sf1": "agenttelemetry/sf1",
+    "agenttelemetry_sf10": "agenttelemetry/sf10",
     "bots_sf1": "bots/sf1",
     "bots_sf10": "bots/sf10",
     "flowkit_sf1": "flowkit/sf1",

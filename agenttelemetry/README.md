@@ -205,4 +205,5 @@ uv run generate.py agenttelemetry --sf 1 --days 14 --no-upload   # a quick test
 ```
 
 The fact tables are generated in chunks of consecutive days, about one 500 MB spans file each, and resumed per chunk
-through `_manifest.json`. SF1 takes about 75 seconds on a laptop, and time and size grow linearly with SF.
+through `_manifest.json`. On a laptop SF1 takes about 2 CPU minutes and SF10 about 35, plus the upload. Size grows
+linearly with SF.

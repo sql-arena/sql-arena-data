@@ -15,9 +15,14 @@ ROW_GROUP_ROWS = 122_880
 
 
 def connect(database: str | Path = ":memory:", temp_dir: Path = TEMP_DIR / "duckdb_tmp") -> duckdb.DuckDBPyConnection:
-    """DUCKDB_MEMORY_LIMIT (e.g. 60GB) caps DuckDB's memory, for parallel generators on one machine."""
+    """DUCKDB_MEMORY_LIMIT (e.g. 60GB) caps DuckDB's memory, for parallel generators on one machine.
+
+    The session time zone is UTC whatever the machine's, so data and the zone name stored in parquet are the same
+    everywhere.
+    """
     temp_dir.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect(str(database))
+    con.execute("SET TimeZone = 'UTC'")
     con.execute(f"SET temp_directory = '{temp_dir}'")
     if limit := os.environ.get("DUCKDB_MEMORY_LIMIT"):
         con.execute(f"SET memory_limit = '{limit}'")
