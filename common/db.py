@@ -73,9 +73,14 @@ def row_range(table: str, start: int, end: int) -> str:
 def write_parquet(con: duckdb.DuckDBPyConnection, source: str, path: Path) -> None:
     """Write a table (or a parenthesised query) as parquet with statistics and a page index on every column.
 
-    DuckDB's own writer has no page index, so its result is streamed into the pyarrow writer.
+    DuckDB's own writer has no page index, so its result is streamed into the pyarrow writer. A source with VARIANT
+    columns is written by DuckDB without a page index instead, as VARIANT cannot be passed to Arrow.
     """
-    reader = con.execute(read_sql(SQL_DIR / "select_all.sql", SOURCE=source)).to_arrow_reader(ROW_GROUP_ROWS)
+    query = read_sql(SQL_DIR / "select_all.sql", SOURCE=source)
+    if any(type_ == "VARIANT" for _, type_, *_ in con.execute(f"DESCRIBE {query.rstrip().rstrip(';')}").fetchall()):
+        execute(con, SQL_DIR / "write_parquet.sql", SOURCE=source, PATH=path, ROW_GROUP_ROWS=ROW_GROUP_ROWS)
+        return
+    reader = con.execute(query).to_arrow_reader(ROW_GROUP_ROWS)
     with pq.ParquetWriter(path, reader.schema, write_statistics=True, write_page_index=True) as writer:
         for batch in reader:
             writer.write_batch(batch, row_group_size=ROW_GROUP_ROWS)

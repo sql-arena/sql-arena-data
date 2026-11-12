@@ -1,7 +1,9 @@
 """Checked-in files: query sets at <dataset path>/queries/<name>.sql and DDL at <dataset path>/schema/<table>.sql.
 
 The repo is authoritative: both are uploaded unchanged to the same key in the bucket, only once committed, and
-files the repo no longer has are removed from the bucket.
+files the repo no longer has are removed from the bucket. A dataset whose queries are the same at every scale
+factor may instead keep one template at <dataset>/queries/<name>.sql, with %%NAMESPACE%% for the namespace; it is
+uploaded to <dataset path>/queries/ with the namespace filled in.
 """
 
 import subprocess
@@ -9,14 +11,39 @@ from pathlib import Path
 
 import duckdb
 
-from common import REPO_ROOT, db, log
+from common import REPO_ROOT, TEMP_DIR, db, log
 from common.bucket import Bucket
 
 CHECKED_IN = ("queries", "schema")
+NAMESPACE = "%%NAMESPACE%%"
 
 
 def query_dir(prefix: str) -> Path:
     return REPO_ROOT / prefix / "queries"
+
+
+def template_dir(prefix: str) -> Path | None:
+    """The query template of the dataset of prefix, <dataset>/queries/, when it has one instead of per-path queries."""
+    dataset = prefix.split("/")[0]
+    directory = REPO_ROOT / dataset / "queries"
+    if dataset == prefix or not directory.is_dir():
+        return None
+    if query_dir(prefix).is_dir():
+        raise SystemExit(f"{prefix}: has both {dataset}/queries/ and {prefix}/queries/; keep one")
+    return directory
+
+
+def load_queries(prefix: str) -> dict[str, str]:
+    """{name: sql} of a dataset path, with a template's %%NAMESPACE%% replaced by the path's namespace."""
+    template = template_dir(prefix)
+    if template is None:
+        return {f.stem: f.read_text() for f in sorted(query_dir(prefix).glob("*.sql"))}
+    namespace = prefix.replace("/", "_")
+    queries = {f.stem: f.read_text() for f in sorted(template.glob("*.sql"))}
+    missing = [name for name, sql in queries.items() if NAMESPACE not in sql]
+    if missing:
+        raise SystemExit(f"{template}: no {NAMESPACE} in {', '.join(missing)}")
+    return {name: sql.replace(NAMESPACE, namespace) for name, sql in queries.items()}
 
 
 def publish_checked_in(bucket: Bucket, prefix: str) -> None:
@@ -24,14 +51,18 @@ def publish_checked_in(bucket: Bucket, prefix: str) -> None:
 
     Uncommitted changes stop an upload to the bucket. A test run with --no-upload publishes the working tree.
     """
+    template = template_dir(prefix)
     if bucket.upload:
-        paths = [f"{prefix}/{folder}" for folder in CHECKED_IN]
+        paths = [f"{prefix}/{folder}" for folder in CHECKED_IN] + ([str(template)] if template else [])
         changed = subprocess.run(["git", "status", "--porcelain", "--", *paths], cwd=REPO_ROOT,
                                  capture_output=True, text=True, check=True).stdout
         if changed:
             raise SystemExit(f"{prefix}: commit the queries and schema before uploading them:\n{changed}")
     for folder in CHECKED_IN:
-        files = sorted((REPO_ROOT / prefix / folder).glob("*.sql"))
+        if folder == "queries" and template:
+            files = _render_template(prefix)
+        else:
+            files = sorted((REPO_ROOT / prefix / folder).glob("*.sql"))
         if not files:
             log(f"{prefix}: no checked-in {folder} to publish")
             continue
@@ -39,6 +70,20 @@ def publish_checked_in(bucket: Bucket, prefix: str) -> None:
         stale = sorted(set(bucket.keys(f"{prefix}/{folder}")) - {f"{prefix}/{folder}/{f.name}" for f in files})
         bucket.delete(stale)
         log(f"{prefix}/{folder}: {len(files)} files uploaded" + (f", {len(stale)} removed" if stale else ""))
+
+
+def _render_template(prefix: str) -> list[Path]:
+    """The template queries of prefix, written with its namespace to temp/<prefix>/queries/."""
+    directory = TEMP_DIR / prefix / "queries"
+    directory.mkdir(parents=True, exist_ok=True)
+    for old in directory.glob("*.sql"):
+        old.unlink()
+    files = []
+    for name, sql in load_queries(prefix).items():
+        path = directory / f"{name}.sql"
+        path.write_text(sql)
+        files.append(path)
+    return files
 
 
 def _base_tables(node: object) -> list[dict]:

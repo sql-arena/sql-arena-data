@@ -22,11 +22,9 @@ from common.bucket import BUCKET, Bucket, session
 # Iceberg takes only some names for UTC; BOTS parquet made on EC2 has the machine's zone name, Etc/UCT
 pyiceberg.io.pyarrow.UTC_ALIASES.add("Etc/UCT")
 
-# Iceberg namespace -> object prefix holding one folder per table
+# Iceberg namespace -> object prefix holding one folder per table. agenttelemetry is left out, as pyiceberg has no
+# VARIANT type for its spans.
 DATASETS = {
-    "agenttelemetry_sf1": "agenttelemetry/sf1",
-    "agenttelemetry_sf10": "agenttelemetry/sf10",
-    "agenttelemetry_sf1000": "agenttelemetry/sf1000",
     "bots_sf1": "bots/sf1",
     "bots_sf10": "bots/sf10",
     "flowkit_sf1": "flowkit/sf1",

@@ -69,12 +69,17 @@ The dataset path includes the scale factor when queries depend on it.
 
 **Example:** `tpch/sf1/queries/q11.sql`
 
+When the queries are the same at every scale factor, the repo may hold them once as a template in
+`<dataset>/queries/<query_name>.sql`, with `%%NAMESPACE%%` in place of the namespace. Publishing writes them
+to `<dataset>/sf<N>/queries/` in the bucket with the namespace filled in, so the bucket layout is the same either
+way. A dataset has a template or per-scale-factor query folders, never both. Example: `agenttelemetry/queries/`.
+
 - One query per file, starting with a comment naming the query, e.g. `/* TPC-H Q18 */`
 - Tables are qualified with the namespace of the dataset path, e.g. `FROM tpch_sf1.lineitem`
 
 ## Data Format
 
-Every table is available in two formats:
+Every table is available as parquet, and as zipped CSV unless its dataset is parquet only (`agenttelemetry`):
 
 - Zipped CSV (`.csv.zip`)
   - `|` column separator
