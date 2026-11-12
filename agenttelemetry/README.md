@@ -2,11 +2,12 @@
 
 Synthetic traces of LLM agents, as observability tools such as Langfuse, Arize Phoenix and LangSmith store them:
 one row per span of an agent run (the run itself, each model call, each tool call), with prompts and results as
-JSON text, token counts, cost and latency, plus evaluation scores that arrive after the run. The span columns follow
-the [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
+JSON in `VARIANT` columns, token counts, cost and latency, plus evaluation scores that arrive after the run.
+The span columns follow the
+[OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
 
 The data covers one year, 2025, and is built so that time filters do real work, unlike
-[AgentLogsBench](../CANDIDATE_DATASETS.md#agent-observability), whose date range covers all of its data:
+[AgentLogsBench](#agentlogsbench), whose date range covers all of its data:
 
 - Every table is stored sorted by its time column, so a time range skips files and row groups.
 - Traffic triples over the year and halves at weekends, so the last 7 days hold about 3% of the spans and a quarter
@@ -14,7 +15,6 @@ The data covers one year, 2025, and is built so that time filters do real work, 
 - What the data holds changes with the date: models are released and retired, prices change, tenants sign up,
   a release ships every two weeks, and there are outages and a regression on known dates. A query over the wrong
   window gives a visibly different answer.
-
 
 ## Licence
 
@@ -25,13 +25,29 @@ all text are made up.
 
 Namespace `agenttelemetry_sf<N>`. Times are `TIMESTAMPTZ` in UTC, with microseconds.
 
-| Table          | Rows at SF1 | Sorted by             | What it is                                                                       |
-| -------------- | ----------: | --------------------- | -------------------------------------------------------------------------------- |
-| `spans`        |     992,000 | `start_time`          | One row per span: agent run, model call (`llm`), tool call (`tool`, `retrieval`) |
-| `traces`       |      99,000 | `start_time`          | One row per agent run: its root span with totals of its spans                    |
-| `scores`       |      70,000 | `created_at`          | Evaluations of runs: LLM judge, user thumbs and human annotation                 |
-| `tenants`      |         200 | `tenant_id`           | Customers: tier, region, sign-up time                                            |
-| `model_prices` |          10 | `model`, `valid_from` | Price per million tokens of each model from a date, and its context size         |
+| Table          | Rows SF1 | Growth   | Sorted by             | What it is                                                                       |
+| -------------- | -------: | -------- | --------------------- | -------------------------------------------------------------------------------- |
+| `spans`        |  991,998 | linear   | `start_time`          | One row per span: agent run, model call (`llm`), tool call (`tool`, `retrieval`) |
+| `traces`       |   99,016 | linear   | `start_time`          | One row per agent run: its root span with totals of its spans                    |
+| `scores`       |   70,231 | linear   | `created_at`          | Evaluations of runs: LLM judge, user thumbs and human annotation                 |
+| `tenants`      |      200 | constant | `tenant_id`           | Customers: tier, region, sign-up time                                            |
+| `model_prices` |       10 | constant | `model`, `valid_from` | Price per million tokens of each model from a date, and its context size         |
+
+Counts are given at SF1, with how they grow with the scale factor SF:
+
+- **Linear:** SF times the SF1 count, to within 3% at SF1000. A larger SF adds sessions, so the fact tables and
+  their ids and timestamps grow linearly.
+- **Constant:** the same at every SF, such as tenants, models, tools and enums.
+- **Square root:** `user_id`, since each tenant has 5 + √SF × 20,000 × its share of users. The bucket's SF10 and
+  SF1000 were generated before this, and grow linearly there.
+- **Sub-linear, about SF^x:** columns whose values come from a bounded range, so more rows mostly repeat values
+  already seen and add only rarer ones: durations, token counts, costs, `created_at` of `scores` (whole seconds),
+  and the JSON columns, which repeat tool results and prompts. The exponent x is fitted between SF1 and SF1000:
+  the count at SF is about the SF1 count × SF^x.
+
+The column tables give the distinct values of each column that the queries read or filter on, measured as in
+[Profile](#profile); a blank means no query reads the column.
+The `VARIANT` columns `attributes`, `input_text` and `output_text` are counted by their 64-bit hash.
 
 Keys are in `agenttelemetry/sf<N>/schema/keys.sql`. A span is identified by `(trace_id, span_id)`, and
 `(trace_id, parent_span_id)` points to its parent.
@@ -41,40 +57,40 @@ Keys are in `agenttelemetry/sf<N>/schema/keys.sql`. A span is identified by `(tr
 One row per span, following the OpenTelemetry GenAI semantic conventions.
 Sample data is from run `921e2a502330c3c5a575a230009d95c1` at SF1: its agent span, first model call and first tool call.
 
-| Column              | Type            | Description                                                                                                       | Sample data                                                                                                                   |
-| ------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `trace_id`          | `VARCHAR`       | The run, 32 hex                                                                                                   | `921e2a502330c3c5a575a230009d95c1`                                                                                            |
-| `span_id`           | `VARCHAR`       | The span within its run, 16 hex                                                                                   | `89ff0165f0bad5ca`                                                                                                            |
-| `parent_span_id`    | `VARCHAR`       | The parent span in the same run; NULL for the run's own span                                                      | `21f802d70fb73112`                                                                                                            |
-| `session_id`        | `VARCHAR`       | The session of 1 to 8 runs, 32 hex                                                                                | `1ed248067075d77e9611bb48b01a9f8f`                                                                                            |
-| `tenant_id`         | `INT`           | The customer, in `tenants`                                                                                        | `1`                                                                                                                           |
-| `user_id`           | `VARCHAR`       | The tenant's user                                                                                                 | `user_1_2058`                                                                                                                 |
-| `environment`       | `VARCHAR`       | `prod`, `staging` or `dev`                                                                                        | `prod`                                                                                                                        |
-| `app_release`       | `VARCHAR`       | The agent's release, one every two weeks, with a `-dev` suffix in `dev`                                           | `v2.22.0`                                                                                                                     |
-| `span_name`         | `VARCHAR`       | The operation and its target                                                                                      | `invoke_agent coding-agent`, `chat initech-reasoner`, `execute_tool glob`                                                     |
-| `kind`              | `VARCHAR`       | `agent` (a run or sub-agent run), `llm` (a model call), `tool` or `retrieval` (a tool call)                       | `llm`                                                                                                                         |
-| `agent_name`        | `VARCHAR`       | The agent that ran the span: one of the five agents, or `explorer` for sub-agents                                 | `coding-agent`                                                                                                                |
-| `tool_name`         | `VARCHAR`       | The tool; NULL except for tool calls                                                                              | `glob`                                                                                                                        |
-| `tool_call_id`      | `VARCHAR`       | The id the model gave the call, as in its output's `tool_calls`; NULL except for tool calls                       | `toolu_43592f7be84d646328f5827a`                                                                                              |
-| `provider`          | `VARCHAR`       | `acme`, `globex` or `initech`; NULL except for model calls                                                        | `initech`                                                                                                                     |
-| `model`             | `VARCHAR`       | The model; NULL except for model calls                                                                            | `initech-reasoner`                                                                                                            |
-| `start_time`        | `TIMESTAMPTZ`   | When the span started; the sort order                                                                             | `2025-10-28 16:23:14.02+00`                                                                                                   |
-| `end_time`          | `TIMESTAMPTZ`   | When the span ended                                                                                               | `2025-10-28 16:25:03.1506+00`                                                                                                 |
-| `first_token_time`  | `TIMESTAMPTZ`   | The first streamed token; only for successful model calls                                                         | `2025-10-28 16:23:14.535403+00`                                                                                               |
-| `duration_ms`       | `BIGINT`        | `end_time` minus `start_time`                                                                                     | `109131`                                                                                                                      |
-| `status`            | `VARCHAR`       | `OK` or `ERROR`                                                                                                   | `OK`                                                                                                                          |
-| `error_type`        | `VARCHAR`       | Why the span failed, such as `timeout`, `rate_limit_error` or `patch_failed`; NULL when `OK`                      | `overloaded_error`                                                                                                            |
-| `finish_reason`     | `VARCHAR`       | `stop`, `tool_calls` or `error`; only for model calls                                                             | `tool_calls`                                                                                                                  |
-| `input_tokens`      | `BIGINT`        | Tokens sent, which grow with each turn of a run; only for model calls                                             | `9487`                                                                                                                        |
-| `output_tokens`     | `BIGINT`        | Tokens generated                                                                                                  | `213`                                                                                                                         |
-| `cache_read_tokens` | `BIGINT`        | Input tokens served from the provider's cache; always 0 for initech                                               | `0`                                                                                                                           |
-| `reasoning_tokens`  | `BIGINT`        | Thinking tokens of reasoning models, 0 for others                                                                 | `3809`                                                                                                                        |
-| `cost_usd`          | `DECIMAL(18,9)` | Cost at the price in force at `start_time`; 0 for failed calls                                                    | `0.028132500`                                                                                                                 |
-| `prompt_name`       | `VARCHAR`       | The system prompt, `<agent>-system`; only for model calls                                                         | `coding-agent-system`                                                                                                         |
-| `prompt_version`    | `INT`           | The system prompt's version, 1 to 7                                                                               | `6`                                                                                                                           |
-| `attributes`        | `VARCHAR`       | JSON object of OpenTelemetry attributes; `feature.flags` on 20% of runs and `experiment.id` on 10% from September | `{"service.name":"coding-agent","deployment.region":"ap-southeast-2","customer.tier":"enterprise","app.release":"v2.22.0",…}` |
-| `input_text`        | `VARCHAR`       | JSON text of what went in: a run's task, a model call's new messages, a tool call's arguments                     | `{"pattern":"**/*refund*"}`                                                                                                   |
-| `output_text`       | `VARCHAR`       | JSON text of what came out: a run's answer, the assistant message with its `tool_calls`, a tool's result          | `{"role":"assistant","content":"…","tool_calls":[{"id":"toolu_43592f7be84d646328f5827a",…}]}`                                 |
+| Column              | Type            | Distinct SF1 | Growth                    | Description                                                                                                        | Sample data                                                                                                                   |
+| ------------------- | --------------- | -----------: | ------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `trace_id`          | `VARCHAR`       |       99,016 | linear                    | The run, 32 hex                                                                                                    | `921e2a502330c3c5a575a230009d95c1`                                                                                            |
+| `span_id`           | `VARCHAR`       |      991,998 | linear                    | The span within its run, 16 hex                                                                                    | `89ff0165f0bad5ca`                                                                                                            |
+| `parent_span_id`    | `VARCHAR`       |      120,062 | linear                    | The parent span in the same run; NULL for the run's own span                                                       | `21f802d70fb73112`                                                                                                            |
+| `session_id`        | `VARCHAR`       |              |                           | The session of 1 to 8 runs, 32 hex                                                                                 | `1ed248067075d77e9611bb48b01a9f8f`                                                                                            |
+| `tenant_id`         | `INT`           |          200 | constant                  | The customer, in `tenants`                                                                                         | `1`                                                                                                                           |
+| `user_id`           | `VARCHAR`       |              |                           | The tenant's user                                                                                                  | `user_1_2058`                                                                                                                 |
+| `environment`       | `VARCHAR`       |              |                           | `prod`, `staging` or `dev`                                                                                         | `prod`                                                                                                                        |
+| `app_release`       | `VARCHAR`       |              |                           | The agent's release, one every two weeks, with a `-dev` suffix in `dev`                                            | `v2.22.0`                                                                                                                     |
+| `span_name`         | `VARCHAR`       |           35 | constant                  | The operation and its target                                                                                       | `invoke_agent coding-agent`, `chat initech-reasoner`, `execute_tool glob`                                                     |
+| `kind`              | `VARCHAR`       |            4 | constant                  | `agent` (a run or sub-agent run), `llm` (a model call), `tool` or `retrieval` (a tool call)                        | `llm`                                                                                                                         |
+| `agent_name`        | `VARCHAR`       |              |                           | The agent that ran the span: one of the five agents, or `explorer` for sub-agents                                  | `coding-agent`                                                                                                                |
+| `tool_name`         | `VARCHAR`       |           22 | constant                  | The tool; NULL except for tool calls                                                                               | `glob`                                                                                                                        |
+| `tool_call_id`      | `VARCHAR`       |      452,658 | linear                    | The id the model gave the call, as in its output's `tool_calls`; NULL except for tool calls                        | `toolu_43592f7be84d646328f5827a`                                                                                              |
+| `provider`          | `VARCHAR`       |            3 | constant                  | `acme`, `globex` or `initech`; NULL except for model calls                                                         | `initech`                                                                                                                     |
+| `model`             | `VARCHAR`       |            7 | constant                  | The model; NULL except for model calls                                                                             | `initech-reasoner`                                                                                                            |
+| `start_time`        | `TIMESTAMPTZ`   |      991,994 | linear                    | When the span started; the sort order                                                                              | `2025-10-28 16:23:14.02+00`                                                                                                   |
+| `end_time`          | `TIMESTAMPTZ`   |      991,998 | linear                    | When the span ended                                                                                                | `2025-10-28 16:25:03.1506+00`                                                                                                 |
+| `first_token_time`  | `TIMESTAMPTZ`   |      427,991 | linear                    | The first streamed token; only for successful model calls                                                          | `2025-10-28 16:23:14.535403+00`                                                                                               |
+| `duration_ms`       | `BIGINT`        |       91,353 | sub-linear, about SF^0.37 | `end_time` minus `start_time`                                                                                      | `109131`                                                                                                                      |
+| `status`            | `VARCHAR`       |            2 | constant                  | `OK` or `ERROR`                                                                                                    | `OK`                                                                                                                          |
+| `error_type`        | `VARCHAR`       |           16 | constant                  | Why the span failed, such as `timeout`, `rate_limit_error` or `patch_failed`; NULL when `OK`                       | `overloaded_error`                                                                                                            |
+| `finish_reason`     | `VARCHAR`       |            3 | constant                  | `stop`, `tool_calls` or `error`; only for model calls                                                              | `tool_calls`                                                                                                                  |
+| `input_tokens`      | `BIGINT`        |       28,022 | sub-linear, about SF^0.06 | Tokens sent, which grow with each turn of a run; only for model calls                                              | `9487`                                                                                                                        |
+| `output_tokens`     | `BIGINT`        |        1,471 | constant                  | Tokens generated                                                                                                   | `213`                                                                                                                         |
+| `cache_read_tokens` | `BIGINT`        |       27,033 | sub-linear, about SF^0.06 | Input tokens served from the provider's cache; always 0 for initech                                                | `0`                                                                                                                           |
+| `reasoning_tokens`  | `BIGINT`        |        3,878 | constant                  | Thinking tokens of reasoning models, 0 for others                                                                  | `3809`                                                                                                                        |
+| `cost_usd`          | `DECIMAL(18,9)` |      213,935 | sub-linear, about SF^0.14 | Cost at the price in force at `start_time`; 0 for failed calls                                                     | `0.028132500`                                                                                                                 |
+| `prompt_name`       | `VARCHAR`       |              |                           | The system prompt, `<agent>-system`; only for model calls                                                          | `coding-agent-system`                                                                                                         |
+| `prompt_version`    | `INT`           |              |                           | The system prompt's version, 1 to 7                                                                                | `6`                                                                                                                           |
+| `attributes`        | `VARIANT`       |      903,432 | linear                    | OpenTelemetry attributes, a JSON object; `feature.flags` on 20% of runs and `experiment.id` on 10% from September  | `{"service.name":"coding-agent","deployment.region":"ap-southeast-2","customer.tier":"enterprise","app.release":"v2.22.0",…}` |
+| `input_text`        | `VARIANT`       |      639,695 | sub-linear, about SF^0.95 | What went in, as JSON: a run's task, a model call's new messages, a tool call's arguments                          | `{"pattern":"**/*refund*"}`                                                                                                   |
+| `output_text`       | `VARIANT`       |      640,997 | sub-linear, about SF^0.91 | What came out: a run's answer or a tool's result as a string, a model call's message with its `tool_calls` as JSON | `{"role":"assistant","content":"…","tool_calls":[{"id":"toolu_43592f7be84d646328f5827a",…}]}`                                 |
 
 How `input_text` and `output_text` fit together:
 
@@ -90,71 +106,71 @@ How `input_text` and `output_text` fit together:
 One row per run: its root span, with totals of its spans.
 Sample data is run `921e2a502330c3c5a575a230009d95c1` at SF1.
 
-| Column              | Type            | Description                                        | Sample data                        |
-| ------------------- | --------------- | -------------------------------------------------- | ---------------------------------- |
-| `trace_id`          | `VARCHAR`       | The run, 32 hex                                    | `921e2a502330c3c5a575a230009d95c1` |
-| `session_id`        | `VARCHAR`       | The session                                        | `1ed248067075d77e9611bb48b01a9f8f` |
-| `tenant_id`         | `INT`           | The customer, in `tenants`                         | `1`                                |
-| `user_id`           | `VARCHAR`       | The tenant's user                                  | `user_1_2058`                      |
-| `agent_name`        | `VARCHAR`       | One of the five agents                             | `coding-agent`                     |
-| `environment`       | `VARCHAR`       | `prod`, `staging` or `dev`                         | `prod`                             |
-| `app_release`       | `VARCHAR`       | The agent's release                                | `v2.22.0`                          |
-| `provider`          | `VARCHAR`       | The provider of the session's model                | `initech`                          |
-| `model`             | `VARCHAR`       | The session's model                                | `initech-reasoner`                 |
-| `start_time`        | `TIMESTAMPTZ`   | When the run started; the sort order               | `2025-10-28 16:23:14.005+00`       |
-| `end_time`          | `TIMESTAMPTZ`   | When the run ended                                 | `2025-10-28 16:32:36.295355+00`    |
-| `duration_ms`       | `BIGINT`        | `end_time` minus `start_time`                      | `562290`                           |
-| `status`            | `VARCHAR`       | `ERROR` when a model call failed and ended the run | `OK`                               |
-| `error_type`        | `VARCHAR`       | The error that ended the run; NULL when `OK`       | `context_length_exceeded`          |
-| `span_count`        | `BIGINT`        | Spans of the run, the run's own included           | `22`                               |
-| `llm_calls`         | `BIGINT`        | Model calls                                        | `10`                               |
-| `tool_calls`        | `BIGINT`        | Tool calls                                         | `10`                               |
-| `tool_errors`       | `BIGINT`        | Failed tool calls                                  | `1`                                |
-| `input_tokens`      | `BIGINT`        | Sum over the model calls                           | `73352`                            |
-| `output_tokens`     | `BIGINT`        | Sum over the model calls                           | `2571`                             |
-| `cache_read_tokens` | `BIGINT`        | Sum over the model calls                           | `0`                                |
-| `reasoning_tokens`  | `BIGINT`        | Sum over the model calls                           | `17867`                            |
-| `cost_usd`          | `DECIMAL(18,9)` | Sum over the model calls                           | `0.170614400`                      |
+| Column              | Type            | Distinct SF1 | Growth                    | Description                                        | Sample data                        |
+| ------------------- | --------------- | -----------: | ------------------------- | -------------------------------------------------- | ---------------------------------- |
+| `trace_id`          | `VARCHAR`       |       99,016 | linear                    | The run, 32 hex                                    | `921e2a502330c3c5a575a230009d95c1` |
+| `session_id`        | `VARCHAR`       |       55,785 | linear                    | The session                                        | `1ed248067075d77e9611bb48b01a9f8f` |
+| `tenant_id`         | `INT`           |          200 | constant                  | The customer, in `tenants`                         | `1`                                |
+| `user_id`           | `VARCHAR`       |       18,007 | square root               | The tenant's user                                  | `user_1_2058`                      |
+| `agent_name`        | `VARCHAR`       |            5 | constant                  | One of the five agents                             | `coding-agent`                     |
+| `environment`       | `VARCHAR`       |              |                           | `prod`, `staging` or `dev`                         | `prod`                             |
+| `app_release`       | `VARCHAR`       |              |                           | The agent's release                                | `v2.22.0`                          |
+| `provider`          | `VARCHAR`       |              |                           | The provider of the session's model                | `initech`                          |
+| `model`             | `VARCHAR`       |            7 | constant                  | The session's model                                | `initech-reasoner`                 |
+| `start_time`        | `TIMESTAMPTZ`   |       99,015 | linear                    | When the run started; the sort order               | `2025-10-28 16:23:14.005+00`       |
+| `end_time`          | `TIMESTAMPTZ`   |       99,016 | linear                    | When the run ended                                 | `2025-10-28 16:32:36.295355+00`    |
+| `duration_ms`       | `BIGINT`        |       61,584 | sub-linear, about SF^0.43 | `end_time` minus `start_time`                      | `562290`                           |
+| `status`            | `VARCHAR`       |            2 | constant                  | `ERROR` when a model call failed and ended the run | `OK`                               |
+| `error_type`        | `VARCHAR`       |              |                           | The error that ended the run; NULL when `OK`       | `context_length_exceeded`          |
+| `span_count`        | `BIGINT`        |              |                           | Spans of the run, the run's own included           | `22`                               |
+| `llm_calls`         | `BIGINT`        |           30 | constant                  | Model calls                                        | `10`                               |
+| `tool_calls`        | `BIGINT`        |           45 | sub-linear, about SF^0.02 | Tool calls                                         | `10`                               |
+| `tool_errors`       | `BIGINT`        |              |                           | Failed tool calls                                  | `1`                                |
+| `input_tokens`      | `BIGINT`        |       42,823 | sub-linear, about SF^0.38 | Sum over the model calls                           | `73352`                            |
+| `output_tokens`     | `BIGINT`        |        7,078 | sub-linear, about SF^0.08 | Sum over the model calls                           | `2571`                             |
+| `cache_read_tokens` | `BIGINT`        |              |                           | Sum over the model calls                           | `0`                                |
+| `reasoning_tokens`  | `BIGINT`        |              |                           | Sum over the model calls                           | `17867`                            |
+| `cost_usd`          | `DECIMAL(18,9)` |       91,855 | sub-linear, about SF^0.67 | Sum over the model calls                           | `0.170614400`                      |
 
 ### scores
 
 Evaluations of runs, which arrive after the run and are sorted by `created_at`.
 
-| Column       | Type          | Description                                                                                                                                   | Sample data                                                   |
-| ------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `score_id`   | `VARCHAR`     | The score, 32 hex                                                                                                                             | `9030dbdb18a3a69f5c56cf1e626c9dd0`                            |
-| `trace_id`   | `VARCHAR`     | The run scored                                                                                                                                | `921e2a502330c3c5a575a230009d95c1`                            |
-| `span_id`    | `VARCHAR`     | The run's own span                                                                                                                            | `21f802d70fb73112`                                            |
-| `session_id` | `VARCHAR`     | The run's session                                                                                                                             | `1ed248067075d77e9611bb48b01a9f8f`                            |
-| `tenant_id`  | `INT`         | The run's tenant                                                                                                                              | `1`                                                           |
-| `name`       | `VARCHAR`     | `helpfulness` (60% of runs), `user_feedback` (8%) or `correctness` (3%)                                                                       | `helpfulness`                                                 |
-| `source`     | `VARCHAR`     | `llm_judge` for helpfulness, `human` for user feedback, `annotation` for correctness                                                          | `llm_judge`                                                   |
-| `value`      | `DOUBLE`      | Helpfulness from 0 to 1; feedback 1 or 0; correctness 1, 0.5 or 0                                                                             | `0.66`                                                        |
-| `label`      | `VARCHAR`     | `thumbs_up`, `thumbs_down`, `correct`, `partially_correct` or `incorrect`; NULL for helpfulness                                               | `thumbs_down`                                                 |
-| `comment`    | `VARCHAR`     | Text on some thumbs down; NULL otherwise                                                                                                      | `The active alert is updated when the table is not regional.` |
-| `created_at` | `TIMESTAMPTZ` | Judge 1 to 6 hours after the run, feedback within 30 minutes, annotation 1 to 10 days after, so December's annotations arrive in January 2026 | `2025-10-28 18:08:05+00`                                      |
+| Column       | Type          | Distinct SF1 | Growth                    | Description                                                                                                                                   | Sample data                                                   |
+| ------------ | ------------- | -----------: | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `score_id`   | `VARCHAR`     |              |                           | The score, 32 hex                                                                                                                             | `9030dbdb18a3a69f5c56cf1e626c9dd0`                            |
+| `trace_id`   | `VARCHAR`     |       63,686 | linear                    | The run scored                                                                                                                                | `921e2a502330c3c5a575a230009d95c1`                            |
+| `span_id`    | `VARCHAR`     |              |                           | The run's own span                                                                                                                            | `21f802d70fb73112`                                            |
+| `session_id` | `VARCHAR`     |              |                           | The run's session                                                                                                                             | `1ed248067075d77e9611bb48b01a9f8f`                            |
+| `tenant_id`  | `INT`         |              |                           | The run's tenant                                                                                                                              | `1`                                                           |
+| `name`       | `VARCHAR`     |            3 | constant                  | `helpfulness` (60% of runs), `user_feedback` (8%) or `correctness` (3%)                                                                       | `helpfulness`                                                 |
+| `source`     | `VARCHAR`     |              |                           | `llm_judge` for helpfulness, `human` for user feedback, `annotation` for correctness                                                          | `llm_judge`                                                   |
+| `value`      | `DOUBLE`      |          101 | constant                  | Helpfulness from 0 to 1; feedback 1 or 0; correctness 1, 0.5 or 0                                                                             | `0.66`                                                        |
+| `label`      | `VARCHAR`     |            5 | constant                  | `thumbs_up`, `thumbs_down`, `correct`, `partially_correct` or `incorrect`; NULL for helpfulness                                               | `thumbs_down`                                                 |
+| `comment`    | `VARCHAR`     |              |                           | Text on some thumbs down; NULL otherwise                                                                                                      | `The active alert is updated when the table is not regional.` |
+| `created_at` | `TIMESTAMPTZ` |       69,887 | sub-linear, about SF^0.81 | Judge 1 to 6 hours after the run, feedback within 30 minutes, annotation 1 to 10 days after, so December's annotations arrive in January 2026 | `2025-10-28 18:08:05+00`                                      |
 
 ### tenants
 
-| Column       | Type          | Description                                                                                                    | Sample data              |
-| ------------ | ------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| `tenant_id`  | `INT`         | The customer, 1 to 200; tenant 1 has 21% of the traffic                                                        | `1`                      |
-| `name`       | `VARCHAR`     | `org_` and the id                                                                                              | `org_001`                |
-| `tier`       | `VARCHAR`     | `enterprise`, `team` or `free`                                                                                 | `enterprise`             |
-| `region`     | `VARCHAR`     | `us-east-1`, `eu-west-1` or `ap-southeast-2`                                                                   | `ap-southeast-2`         |
-| `created_at` | `TIMESTAMPTZ` | Sign-up: before 2025 for tenants 1 to 20, except 3 on 2025-07-21 and 7 on 2025-10-06; during 2025 for the rest | `2023-08-28 00:00:00+00` |
+| Column       | Type          | Distinct SF1 | Growth   | Description                                                                                                    | Sample data              |
+| ------------ | ------------- | -----------: | -------- | -------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `tenant_id`  | `INT`         |          200 | constant | The customer, 1 to 200; tenant 1 has 22% of the runs                                                           | `1`                      |
+| `name`       | `VARCHAR`     |          200 | constant | `org_` and the id                                                                                              | `org_001`                |
+| `tier`       | `VARCHAR`     |            3 | constant | `enterprise`, `team` or `free`                                                                                 | `enterprise`             |
+| `region`     | `VARCHAR`     |              |          | `us-east-1`, `eu-west-1` or `ap-southeast-2`                                                                   | `ap-southeast-2`         |
+| `created_at` | `TIMESTAMPTZ` |          198 | constant | Sign-up: before 2025 for tenants 1 to 20, except 3 on 2025-07-21 and 7 on 2025-10-06; during 2025 for the rest | `2023-08-28 00:00:00+00` |
 
 ### model_prices
 
-| Column             | Type            | Description                                                  | Sample data              |
-| ------------------ | --------------- | ------------------------------------------------------------ | ------------------------ |
-| `provider`         | `VARCHAR`       | `acme`, `globex` or `initech`                                | `acme`                   |
-| `model`            | `VARCHAR`       | The model                                                    | `acme-large-1`           |
-| `valid_from`       | `TIMESTAMPTZ`   | The price applies from here to the model's next `valid_from` | `2024-06-01 00:00:00+00` |
-| `input_price`      | `DECIMAL(12,6)` | USD per million input tokens not read from cache             | `15.000000`              |
-| `output_price`     | `DECIMAL(12,6)` | USD per million output and reasoning tokens                  | `75.000000`              |
-| `cache_read_price` | `DECIMAL(12,6)` | USD per million input tokens read from cache                 | `1.500000`               |
-| `context_tokens`   | `INT`           | The model's context size                                     | `200000`                 |
+| Column             | Type            | Distinct SF1 | Growth   | Description                                                  | Sample data              |
+| ------------------ | --------------- | -----------: | -------- | ------------------------------------------------------------ | ------------------------ |
+| `provider`         | `VARCHAR`       |              |          | `acme`, `globex` or `initech`                                | `acme`                   |
+| `model`            | `VARCHAR`       |            7 | constant | The model                                                    | `acme-large-1`           |
+| `valid_from`       | `TIMESTAMPTZ`   |           10 | constant | The price applies from here to the model's next `valid_from` | `2024-06-01 00:00:00+00` |
+| `input_price`      | `DECIMAL(12,6)` |           10 | constant | USD per million input tokens not read from cache             | `15.000000`              |
+| `output_price`     | `DECIMAL(12,6)` |            9 | constant | USD per million output and reasoning tokens                  | `75.000000`              |
+| `cache_read_price` | `DECIMAL(12,6)` |            9 | constant | USD per million input tokens read from cache                 | `1.500000`               |
+| `context_tokens`   | `INT`           |              |          | The model's context size                                     | `200000`                 |
 
 ## How the Data Is Made
 
@@ -167,13 +183,16 @@ every run gives the same data.
   sessions and 99,000 runs a year at SF1. Start times follow a daily curve, busiest from 10:00 to 18:00 UTC.
   Session n of a day is the same at every scale factor, except for its user, since a larger scale factor only adds
   sessions.
-- **Tenants.** 200 tenants have Zipf-distributed traffic, and tenant 1 has 21% of it. Tenants 1 to 20 exist all year
-  except tenant 3, which signs up on 2025-07-21; tenant 7, which signs up on 2025-10-06; and the rest sign up during
-  the year. Each tenant has SF x 20,000 x its share of users and a main agent.
+- **Tenants.** 200 tenants have Zipf-distributed traffic, and tenant 1 draws 21% of it. Tenants 1 to 20 exist all
+  year except tenant 3, which signs up on 2025-07-21; tenant 7, which signs up on 2025-10-06; and the rest sign up
+  during the year. A session drawn for a tenant that has not signed up yet goes to one of the 18 that exist all year,
+  so tenant 1 has 22% of the runs. Each tenant has a main agent and 5 + √SF x 20,000 x its share of users: users
+  grow with the square root of the scale factor, so a larger scale factor has more sessions per user.
 - **Agents.** Five agents, each with its own tools. 70% of a tenant's sessions use its main agent, so the shares
-  of sessions at SF1 follow the large tenants:
-  - `support-agent` (32% of sessions): `search_kb`, `get_ticket`, `update_ticket`, `lookup_order`, `send_email`
-  - `coding-agent` (23%): `read_file`, `edit_file`, `bash`, `grep`, `glob`, `web_fetch`
+  of sessions follow the large tenants, and Black Friday adds support sessions:
+  - `support-agent` (32% of sessions at SF1, 33% at SF10): `search_kb`, `get_ticket`, `update_ticket`,
+    `lookup_order`, `send_email`
+  - `coding-agent` (23% at SF1, 22% at SF10): `read_file`, `edit_file`, `bash`, `grep`, `glob`, `web_fetch`
   - `research-agent` (18%): `web_search`, `web_fetch`, `read_pdf`
   - `sre-agent` (14%): `query_logs`, `get_metrics`, `kubectl`, `bash`, `page_oncall`
   - `data-agent` (13%): `list_tables`, `describe_table`, `sql_query`, `run_python`
@@ -200,52 +219,84 @@ every run gives the same data.
   `cost_usd` is computed from the price in force at the call's `start_time`. Failed calls cost 0. Long coding runs
   on `globex-flash` fail with `context_length_exceeded`.
 
-
-
 ### Events on Known Dates
 
-| When (UTC)                                                               | What                                                                                                        | Seen in |
-| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- | ------- |
-| 2025-03-18 13:00 to 16:30                                                | globex model calls fail with `overloaded_error` 35% of the time                                             | Q18     |
-| 2025-07-09, all day                                                      | `web_search` is 6x slower and times out 40% of the time                                                     | Q28     |
-| 2025-09-02 14:00 to 15:15                                                | acme model calls fail with `rate_limit_error` 50% of the time                                               | Q19     |
-| release `v2.24.0`: staging 2025-11-12 to 11-25, prod 2025-11-19 to 12-02 | `edit_file` fails with `patch_failed` 30% more often                                                        | Q21     |
-| 2025-11-28 (Black Friday)                                                | 1.5 times the day's sessions on top, all support: 450 support sessions at SF1, against 68 the Friday before |         |
-| from 2025-09-01                                                          | `experiment.id = ctx-compression-b` on 10% of sessions                                                      |         |
+| When (UTC)                                                               | What                                                                                                                                  | Seen in |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| 2025-03-18 13:00 to 16:30                                                | globex model calls fail with `overloaded_error` 35% of the time                                                                       | Q18     |
+| 2025-07-09, all day                                                      | `web_search` is 6x slower and times out 40% of the time                                                                               | Q28     |
+| 2025-09-02 14:00 to 15:15                                                | acme model calls fail with `rate_limit_error` 50% of the time                                                                         | Q19     |
+| release `v2.24.0`: staging 2025-11-12 to 11-25, prod 2025-11-19 to 12-02 | `edit_file` fails with `patch_failed` 30% more often                                                                                  | Q21     |
+| 2025-11-28 (Black Friday)                                                | 1.5 times the day's sessions on top, all support: 450 support sessions at SF1 and 4,604 at SF10, against 68 and 769 the Friday before |         |
+| from 2025-09-01                                                          | `experiment.id = ctx-compression-b` on 10% of sessions                                                                                |         |
 
 ### Needles
 
-The planted text is the same at every scale factor, because it is placed on the first matching run of a day:
+Needles are values that pick out a few rows, for lookups and text search. Session n of a day is the same at every
+scale factor, and the text needles sit in the first sessions of a day, so they are the same rows at every scale
+factor, as are the trace and session needles of sessions 0 to 39.
+
+Most needles are computed from a day d (0 is 2025-01-01) and a slot by the macros in
+[`sql/needles.sql`](sql/needles.sql), so a query can be run with a different needle each time:
+
+| Macro                   | Gives                                                                                                    | Slots per day           | In the year | Rows                                           | Query |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------- | ----------- | ---------------------------------------------- | ----- |
+| `needle_trace(d, n, i)` | `trace_id` of run i of session n of day d; run 0 exists in every session                                 | n from 0 to 40 × SF − 1 | 14,600 × SF | the run's spans                                | Q01   |
+| `needle_session(d, n)`  | `session_id` of session n of day d                                                                       | n from 0 to 40 × SF − 1 | 14,600 × SF | the session's 1 to 8 runs                      | Q02   |
+| `needle_code(d, k)`     | `ERR_` and 12 hex, as `ERROR [gateway] ERR_…: upstream rejected the request` at the end of a tool result | k from 0 to 3           | 1,460       | 2: the tool result and the model call it feeds | Q11   |
+| `needle_place(d)`       | a place name with non-ASCII letters, such as `Ærskøbing` on day 0, in the day's second support task      | 1                       | 365         | 2: the run's input and its first model call    | Q13   |
+
+- **Sessions and runs.** Every day has at least 40 × SF sessions (41 × SF on the quietest day, 2025-01-04).
+  Sessions 0 to 39 are the same runs at every scale factor, so a trace or session needle with n below 40 returns
+  the same rows at every SF. Q01 and Q02 use `needle_trace(300, 12, 0)` and `needle_session(300, 12)`, on
+  2025-10-28.
+- **Codes.** Code k of day d goes in the (k+1)-th tool result of the day that a later model call reads, leaving
+  out `bash`, `query_logs` and `task`. It is added after failed turns are removed, so all four codes of every day
+  are in the data.
+- **Places.** Each day has its own place name, and no other day holds it: 365 of the 1,728 names the macro can
+  make.
+
+Three needles are fixed text, planted on the first run of a day that qualifies:
 
 | Text                                                    | Where                                                                                            | Rows               |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------ |
 | `export PAYMENTS_API_KEY=sk_live_…` (a fake Stripe key) | one `bash` result on 2025-06-12, and the model call that reads it                                | 2 (Q10)            |
 | `ERR_LEDGER_SHARD_7731`                                 | one `query_logs` result on each day from 2025-10-06 to 10-12, and the model calls that read them | 14 in 7 runs (Q11) |
-| `Ærøskøbing`                                            | one support task on 2025-02-03: the run's input and its first model call                         | 2 (Q13)            |
+| `Ærøskøbing`                                            | the first support task on 2025-02-03: the run's input and its first model call                   | 2 (Q13)            |
 
-Q01 and Q02 look up a run (`921e2a502330c3c5a575a230009d95c1`) and its session on 2025-10-28, which also exist at
-every scale factor.
+The committed Q01, Q02, Q11 and Q13 use the fixed values above. The [demo](demo/README.md) runs them with the
+needle of a chosen day and slot instead, along with that day's time window.
+
+[`sql/validate.sql`](sql/validate.sql) checks every needle after generating: all 14,600 sessions and first runs
+of slots 0 to 39, each of the 1,460 codes in exactly 2 spans, each of the 365 places in exactly 2 spans on its day,
+no other place names, and the row counts of the fixed needles.
+When a day is generated in slices of its sessions, only the slice that starts at session 0 holds the day's needles,
+so that slice must hold at least the day's sessions at SF1.
 
 ## Queries
 
-`agenttelemetry/sf<N>/queries/q01.sql` to `q28.sql` follow the query shapes of the observability tools: trace and
-session lookups, dashboards, trace lists, text search, JSON attributes, span trees, errors, evaluations and cost.
+`agenttelemetry/queries/q01.sql` to `q32.sql` follow the query shapes of the observability tools: trace and
+session lookups, dashboards, trace lists, log tails, text search, JSON attributes, span trees, errors, evaluations
+and cost.
 "Now" is the end of the year 2025, so "last 7 days" is `start_time >= '2025-12-25'`.
+The queries are the same at every scale factor, so the repo holds them once, with `%%NAMESPACE%%` for the namespace.
+Publishing writes them to `agenttelemetry/sf<N>/queries/` in the bucket as `agenttelemetry_sf<N>`, and
+`common.queries.load_queries("agenttelemetry/sf<N>")` gives them the same way in Python.
 
 Every query but Q10 (search the whole year for a leaked key) and Q26 (the model mix of each week) filters on time.
 Every scale factor has the same shares of `spans` in these windows, to within 0.2 percentage points:
 
-| Window             | Queries                                | Share of spans |
-| ------------------ | -------------------------------------- | -------------: |
-| 1 hour             | Q16                                    |  0.04 to 0.05% |
-| 6 hours            | Q19                                    |  0.15 to 0.16% |
-| 1 day              | Q01, Q03, Q06, Q14                     |  0.41 to 0.51% |
-| 3 days             | Q02 (of `traces`), Q28                 |   0.96 to 1.3% |
-| 7 days             | Q05, Q09, Q11, Q15, Q17, Q24           |    2.4 to 2.9% |
-| 14 days            | Q25                                    |           3.8% |
-| a month or 30 days | Q04, Q07, Q12, Q13, Q18, Q21, Q22, Q27 |     4.7 to 13% |
-| a quarter          | Q08, Q20, Q23                          |      28 to 35% |
-| all                | Q10, Q26                               |           100% |
+| Window             | Queries                                  | Share of spans |
+| ------------------ | ---------------------------------------- | -------------: |
+| 1 hour             | Q16                                      |  0.04 to 0.05% |
+| 6 hours            | Q19                                      |  0.15 to 0.16% |
+| 1 day              | Q01, Q03, Q06, Q14                       |  0.41 to 0.51% |
+| 3 days             | Q02 (of `traces`), Q28                   |   0.96 to 1.3% |
+| 7 days             | Q05, Q09, Q11, Q15, Q17, Q24, Q29 to Q32 |    2.4 to 2.9% |
+| 14 days            | Q25                                      |           3.8% |
+| a month or 30 days | Q04, Q07, Q12, Q13, Q18, Q21, Q22, Q27   |     4.7 to 13% |
+| a quarter          | Q08, Q20, Q23                            |      28 to 35% |
+| all                | Q10, Q26                                 |           100% |
 
 | Query         | Shape                                                                                            |
 | ------------- | ------------------------------------------------------------------------------------------------ |
@@ -271,26 +322,94 @@ Every scale factor has the same shares of `spans` in these windows, to within 0.
 | Q26           | Weekly model mix over the whole year, which shows the rollouts                                   |
 | Q27           | December spend of the tenants that signed up in the second half of the year                      |
 | Q28           | `web_search` latency and timeouts by hour around the 2025-07-09 outage                           |
+| Q29           | Log tail: the newest 50 failed spans of one tenant in `prod`                                     |
+| Q30           | The newest 50 tool results matching any of five `ILIKE` phrases joined by `OR`                   |
+| Q31           | Ranked search: the 50 tool results that match most of four terms, scored by how many they match  |
+| Q32           | Top 20 runs by failed tool calls, grouped by `trace_id` over `spans`                             |
 
-The queries use DuckDB function names (`quantile_cont`, `arg_min`, `json_extract_string`, `time_bucket`,
-`ASOF JOIN`), as the other query sets do. They were written for this dataset and checked against SF1.
+The queries use DuckDB function names (`quantile_cont`, `arg_min`, `time_bucket`, `ASOF JOIN`) and its `VARIANT`
+access (`attributes."app.release"::VARCHAR`, `output_text.tool_calls::VARIANT[]`), as the other query sets do.
+`LIKE` casts a `VARIANT` to text: a string as it is, JSON in DuckDB's rendering, so a pattern without JSON quotes
+finds the same rows as in JSON text. They were written for this dataset and checked against SF1.
+
+### Where the Queries Come From
+
+The queries are written for this dataset; none is copied from another query set. The shapes come from two places:
+
+- **The observability tools.** Langfuse, Arize Phoenix and LangSmith store traces as spans and their UIs and APIs
+  mostly run trace and session lookups, time-bucketed latency and cost rollups, top-N by cost, trace lists with
+  paging, filters on JSON attributes, and substring search in prompt and tool text. Q01 bounds a trace lookup by
+  the run's day as Langfuse does. Evaluations (Q22, Q23) follow how these tools attach scores to runs after the fact.
+- **[AgentLogsBench](#agentlogsbench).** It is the only published query set for agent traces. Every one of its
+  query shapes, as summarised in [AgentLogsBench](#agentlogsbench), has a counterpart here, so a result on
+  AgentLogsBench has a like-for-like query on a dataset whose time filters prune. Q29 to Q32 were added for the
+  shapes the observability tools did not already give.
+
+| AgentLogsBench shape                              | AgentLogsBench queries  | Here                    |
+| ------------------------------------------------- | ----------------------- | ----------------------- |
+| Trace lookup                                      | Q03                     | Q01, Q02                |
+| Self-join of children to their parents            | Q04                     | Q17; Q16 recursively    |
+| Filter, then `ORDER BY event_time DESC LIMIT 50`  | Q01, Q07, Q14, Q16, Q17 | Q29, Q30                |
+| Text search ranked by score, `LIMIT 50`           | Q05, Q08, Q11           | Q31                     |
+| Several phrases or `LIKE` patterns joined by `OR` | Q13, Q14, Q15           | Q30                     |
+| Top-N grouped by `trace_id` over the spans        | Q02                     | Q32                     |
+| Aggregate without `WHERE`                         | Q06                     | Q26 (of `traces`)       |
+| Group by tool, JSON attributes or payload fields  | Q09, Q10, Q12, Q18, Q20 | Q09, Q12, Q14, Q21, Q28 |
+| `count(DISTINCT)` of incident traces              | Q19                     | Q11, Q12, Q16           |
+
+The differences are on purpose:
+
+- **Time windows.** AgentLogsBench's date parameters are the data's own first and last date, so no query prunes.
+  Here every query but Q10 and Q26 has a window, from one hour to a quarter.
+- **Text matching.** AgentLogsBench ranks with `TEXT_TOKEN_SCORE` and matches with `TEXT_HAS_TOKEN` and
+  `TEXT_HAS_PHRASE`, which are token matches in ClickHouse but substring matches in DuckDB, so engines return
+  different rows. Q30 and Q31 use `ILIKE` only, and Q31's score is the number of terms a row contains, so every
+  engine returns the same rows.
+- **Deterministic order.** Every `LIMIT` here has a unique tie-break (`span_id` or `trace_id`), so the result is
+  the same on every engine.
+
+## AgentLogsBench
+
+[AgentLogsBench](https://github.com/velodb/agentlogsbench) (VeloDB, Apache-2.0) is the benchmark this dataset is
+derived from.
+
+AgentsLogBench is a synthetic Claude Code-style agent traces in one table. Additional tables were added to 
+simulate pricing calculations and the generator was greatly extended to create events and needles that can be
+analysed and demoed.
 
 ## Bucket Layout and Generating
 
+The dataset is generated in two copies from the same generator SQL, so they hold the same rows:
+
+- **Parquet in the public bucket**, by `generate.py`, like the other datasets.
+- **Iceberg tables in Amazon S3 Tables**, by a coordinator and worker containers.
+
+Both have `spans.attributes`, `input_text` and `output_text` as `VARIANT`.
+
+Agent Telemetry is parquet only: unlike the other datasets in this repo which have `csv.zip` copies.
+
+### Parquet to SQL Arena Bucket Generation
+
 ```text
-agenttelemetry/sf<N>/<table>/<table>[_NNNN].{parquet,csv.zip}
-agenttelemetry/sf1000/<table>/<table>_<DDD>_<NN>.parquet     part NN of the chunk starting on day DDD of the year
-agenttelemetry/sf<N>/queries/, agenttelemetry/sf<N>/schema/
+agenttelemetry/sf<N>/<table>/<table>[_NNNN].parquet
+agenttelemetry/sf<N>/<table>/<table>_<DDD>_<NN>.parquet   when sharded: part NN of the chunk starting on day DDD
+agenttelemetry/sf<N>/queries/                             rendered from agenttelemetry/queries/
+agenttelemetry/sf<N>/schema/
 ```
 
-SF1 and SF10 have parquet and csv.zip. SF1000 is parquet only: 986 million spans, about 760 GB of parquet.
+`spans` is written by DuckDB, as pyarrow cannot write `VARIANT`, so its parquet has statistics per row group but no
+page index; the other tables have both. Readers without `VARIANT` support see those three columns as a struct of
+binary fields. There is no Iceberg metadata over this parquet (`generate.py iceberg`), as pyiceberg has no
+`VARIANT` type yet; the Iceberg copy is the S3 Tables one below.
+
+SF1000 is 986 million spans, about 760 GB of parquet.
 
 ```bash
 uv run generate.py agenttelemetry --sf 1                         # 992,000 spans, 750 MB of span parquet
 uv run generate.py agenttelemetry --sf 1 --days 14 --no-upload   # a quick test
 # SF1000 in 6 shards, run at the same time (3 on each of two machines), then combined
-uv run generate.py agenttelemetry --sf 1000 --parquet-only --shard 0/6    # ... to --shard 5/6
-uv run generate.py agenttelemetry --sf 1000 --parquet-only --merge-shards 6
+uv run generate.py agenttelemetry --sf 1000 --shard 0/6          # ... to --shard 5/6
+uv run generate.py agenttelemetry --sf 1000 --merge-shards 6
 ```
 
 The fact tables are generated in chunks of consecutive days, about one 500 MB spans file each, and resumed per chunk
@@ -301,71 +420,165 @@ and SF10 about 35, plus the upload. Size grows linearly with SF.
 is the same as unsharded, as every day is generated from its own seeds. Shard 0 also writes the dimensions and the
 queries and schema. Once all shards are complete, `--merge-shards N` combines their manifests into `_manifest.json`.
 
+The bucket's parquet was generated before users grew with the square root of the scale factor and before the
+computed needles, so its planted text, and its `user_id` at SF10 and SF1000, differ from a new generation.
+
+### Amazon S3 Tables
+
+Table bucket `sql-arena-agenttelemetry` in us-east-1, namespace `agenttelemetry_sf<N>`, Iceberg v3:
+
+- `spans` and `traces` are partitioned by day of `start_time`, `scores` by day of `created_at`, with sort order
+  `trace_id, session_id` and z-order compaction to 512 MB files.
+
+Two containers in [`demo/`](demo/README.md) generate it, through [`s3tables.py`](s3tables.py):
+
+- **The coordinator** plans a scale factor: it creates the namespace and tables, loads `tenants` and
+  `model_prices`, and splits the fact tables into chunks of up to 2,500 sessions of one day, about 45,000 spans,
+  which one process generates in under 2 GB. A day's first chunk holds at least 1,000 sessions, so it has all of
+  the day's needles. It hands out one chunk at a time to whichever worker asks, so workers can join or leave during
+  a run. It commits the files that workers wrote, in one commit per table for many chunks, without reading them
+  ([`iceberg_append.py`](iceberg_append.py)), keeps a ledger so a restart resumes, and serves a web app to follow
+  the generation and run the queries.
+- **A worker** runs one process per CPU, each with one DuckDB thread and 2 GB of memory. A process generates its
+  chunk and writes `spans`, `traces` and `scores` of it as parquet files into each table's storage, one per day.
+  The coordinator has no authentication, so workers on other machines need a private network path to it.
+
+Build, run, environment and validation are in [`demo/README.md`](demo/README.md).
+
+## Query Profile
+
+From the profile of each query (`EXPLAIN ANALYZE`):
+
+- **Rows returned:** rows of the result.
+- **Rows aggregated:** rows into the aggregate operators: grouped, ungrouped and `count(DISTINCT)`.
+- **Rows scanned:** rows of the parquet row groups each table scan reads, after skipping row groups by the min/max
+  of its filters, summed over the scans of the query.
+  DuckDB's own `rows_scanned` for parquet counts every row whatever the filter, so it is not used.
+- **Rows joined:** rows into the join operators, both sides, summed over the joins of the query.
+  In Q16 the recursive join counts every iteration.
+
+| Query | Metric          |       SF1 |       SF10 |        SF1000 |
+| ----- | --------------- | --------: | ---------: | ------------: |
+| Q01   | Rows returned   |        22 |         22 |            22 |
+| Q01   | Rows aggregated |         0 |          0 |             0 |
+| Q01   | Rows scanned    |   122,880 |    122,880 |     4,259,934 |
+| Q01   | Rows joined     |         0 |          0 |             0 |
+| Q02   | Rows returned   |         4 |          4 |             4 |
+| Q02   | Rows aggregated |         0 |          0 |             0 |
+| Q02   | Rows scanned    |    35,719 |     64,458 |     1,328,932 |
+| Q02   | Rows joined     |         0 |          0 |             0 |
+| Q03   | Rows returned   |       112 |        143 |           144 |
+| Q03   | Rows aggregated |     2,193 |     21,523 |     2,077,865 |
+| Q03   | Rows scanned    |   109,248 |    147,522 |     4,828,590 |
+| Q03   | Rows joined     |         0 |          0 |             0 |
+| Q04   | Rows returned   |       536 |        540 |           540 |
+| Q04   | Rows aggregated |    51,569 |    519,219 |    51,617,442 |
+| Q04   | Rows scanned    |   232,328 |  1,291,606 |   119,154,150 |
+| Q04   | Rows joined     |    51,769 |    519,419 |    51,617,642 |
+| Q05   | Rows returned   |         6 |          6 |             6 |
+| Q05   | Rows aggregated |    12,538 |    122,929 |    12,118,088 |
+| Q05   | Rows scanned    |   109,248 |    299,233 |    28,206,318 |
+| Q05   | Rows joined     |         0 |          0 |             0 |
+| Q06   | Rows returned   |        50 |         50 |            50 |
+| Q06   | Rows aggregated |       125 |      1,076 |       107,702 |
+| Q06   | Rows scanned    |    61,077 |     69,878 |     1,631,735 |
+| Q06   | Rows joined     |       576 |      5,382 |       538,208 |
+| Q07   | Rows returned   |        20 |         20 |            20 |
+| Q07   | Rows aggregated |    11,525 |    113,977 |    11,387,031 |
+| Q07   | Rows scanned    |    35,719 |    196,414 |    11,441,306 |
+| Q07   | Rows joined     |         0 |          0 |             0 |
+| Q08   | Rows returned   |       100 |        100 |           100 |
+| Q08   | Rows aggregated |         0 |          0 |             0 |
+| Q08   | Rows scanned    |    99,016 |    328,004 |    27,783,519 |
+| Q08   | Rows joined     |         0 |          0 |             0 |
+| Q09   | Rows returned   |        22 |         22 |            22 |
+| Q09   | Rows aggregated |    13,310 |    130,697 |    12,812,113 |
+| Q09   | Rows scanned    |   109,248 |    299,233 |    28,206,318 |
+| Q09   | Rows joined     |         0 |          0 |             0 |
+| Q10   | Rows returned   |         2 |          2 |             2 |
+| Q10   | Rows aggregated |         0 |          0 |             0 |
+| Q10   | Rows scanned    |   991,998 |  9,863,508 |   984,702,942 |
+| Q10   | Rows joined     |         0 |          0 |             0 |
+| Q11   | Rows returned   |         7 |          7 |             7 |
+| Q11   | Rows aggregated |        14 |         14 |            14 |
+| Q11   | Rows scanned    |   122,880 |    368,640 |    23,912,154 |
+| Q11   | Rows joined     |         0 |          0 |             0 |
+| Q12   | Rows returned   |         4 |          4 |             4 |
+| Q12   | Rows aggregated |     3,547 |     35,688 |     3,567,259 |
+| Q12   | Rows scanned    |   232,128 |  1,291,406 |   119,153,950 |
+| Q12   | Rows joined     |         0 |          0 |             0 |
+| Q13   | Rows returned   |         2 |          2 |             2 |
+| Q13   | Rows aggregated |         0 |          0 |             0 |
+| Q13   | Rows scanned    |   122,880 |    652,506 |    47,357,909 |
+| Q13   | Rows joined     |         0 |          0 |             0 |
+| Q14   | Rows returned   |         9 |          9 |             9 |
+| Q14   | Rows aggregated |     4,505 |     45,548 |     4,634,882 |
+| Q14   | Rows scanned    |   109,248 |    245,760 |     4,747,948 |
+| Q14   | Rows joined     |         0 |          0 |             0 |
+| Q15   | Rows returned   |        22 |         22 |            22 |
+| Q15   | Rows aggregated |    13,312 |    130,696 |    12,812,098 |
+| Q15   | Rows scanned    | 1,101,246 | 10,162,741 | 1,012,909,260 |
+| Q15   | Rows joined     |    49,343 |    484,590 |    47,512,691 |
+| Q16   | Rows returned   |         8 |          8 |             8 |
+| Q16   | Rows aggregated |       519 |      4,084 |       354,869 |
+| Q16   | Rows scanned    |   109,248 |     24,642 |       491,520 |
+| Q16   | Rows joined     |     2,603 |     20,792 |     1,799,965 |
+| Q17   | Rows returned   |         3 |          3 |             3 |
+| Q17   | Rows aggregated |     1,082 |     10,508 |     1,050,820 |
+| Q17   | Rows scanned    |   218,496 |    598,466 |    56,412,636 |
+| Q17   | Rows joined     |    12,826 |    126,348 |    12,474,848 |
+| Q18   | Rows returned   |        93 |         93 |            93 |
+| Q18   | Rows aggregated |    24,638 |    246,907 |    24,898,709 |
+| Q18   | Rows scanned    |   245,760 |    643,736 |    57,527,762 |
+| Q18   | Rows joined     |         0 |          0 |             0 |
+| Q19   | Rows returned   |        14 |         44 |           643 |
+| Q19   | Rows aggregated |        23 |        162 |        17,429 |
+| Q19   | Rows scanned    |   122,880 |    122,880 |     1,505,224 |
+| Q19   | Rows joined     |         0 |          0 |             0 |
+| Q20   | Rows returned   |        25 |         25 |            25 |
+| Q20   | Rows aggregated |     9,762 |     96,441 |     9,633,621 |
+| Q20   | Rows scanned    |   390,727 |  3,933,311 |   379,036,320 |
+| Q20   | Rows joined     |    39,746 |    394,123 |    39,403,915 |
+| Q21   | Rows returned   |        21 |         21 |            21 |
+| Q21   | Rows aggregated |    11,412 |    113,173 |    11,162,462 |
+| Q21   | Rows scanned    |   245,760 |  1,192,473 |   111,197,227 |
+| Q21   | Rows joined     |         0 |          0 |             0 |
+| Q22   | Rows returned   |         6 |          6 |             6 |
+| Q22   | Rows aggregated |     7,113 |     71,248 |     7,125,349 |
+| Q22   | Rows scanned    |    61,077 |    359,515 |    24,198,936 |
+| Q22   | Rows joined     |    14,262 |    142,999 |    14,278,533 |
+| Q23   | Rows returned   |         7 |          7 |             7 |
+| Q23   | Rows aggregated |       597 |      5,959 |       615,018 |
+| Q23   | Rows scanned    |   140,462 |    620,754 |    33,513,182 |
+| Q23   | Rows joined     |    24,149 |    239,512 |    23,906,489 |
+| Q24   | Rows returned   |         5 |          5 |             5 |
+| Q24   | Rows aggregated |     4,484 |     43,838 |     4,383,718 |
+| Q24   | Rows scanned    |    35,719 |     78,166 |     2,902,177 |
+| Q24   | Rows joined     |         0 |          0 |             0 |
+| Q25   | Rows returned   |         6 |          6 |             6 |
+| Q25   | Rows aggregated |    16,202 |    163,074 |    16,189,025 |
+| Q25   | Rows scanned    |   245,770 |    525,182 |    37,546,349 |
+| Q25   | Rows joined     |    16,212 |    163,084 |    16,189,035 |
+| Q26   | Rows returned   |       270 |        270 |           270 |
+| Q26   | Rows aggregated |    99,016 |    985,701 |    98,537,328 |
+| Q26   | Rows scanned    |    99,016 |    985,701 |    98,537,328 |
+| Q26   | Rows joined     |         0 |          0 |             0 |
+| Q27   | Rows returned   |        20 |         20 |            20 |
+| Q27   | Rows aggregated |     2,924 |     30,235 |     3,036,445 |
+| Q27   | Rows scanned    |    35,919 |    143,197 |    12,411,907 |
+| Q27   | Rows joined     |     8,442 |     84,085 |     8,477,345 |
+| Q28   | Rows returned   |        41 |         72 |            72 |
+| Q28   | Rows aggregated |       529 |      4,982 |       466,364 |
+| Q28   | Rows scanned    |   122,880 |    156,532 |     9,814,572 |
+| Q28   | Rows joined     |         0 |          0 |             0 |
+
+The distinct values of the columns are in the column tables of [Tables](#tables).
+
 ## Profile
 
-Measured with DuckDB 1.5 over the parquet in the bucket, with each table a view over `<table>/*.parquet`.
-
-### Distinct Values
-
-The columns that the queries read or filter on, from the table scans in their plans.
-The JSON text columns `attributes`, `input_text` and `output_text` are counted by their 64-bit hash.
-
-| Column                          |     SF1 |      SF10 |      SF1000 |
-| ------------------------------- | ------: | --------: | ----------: |
-| `spans.trace_id`                |  99,016 |   985,701 |  98,537,328 |
-| `spans.span_id`                 | 991,998 | 9,863,508 | 984,702,942 |
-| `spans.parent_span_id`          | 120,062 | 1,194,693 | 119,465,672 |
-| `spans.tenant_id`               |     200 |       200 |         200 |
-| `spans.span_name`               |      35 |        35 |          35 |
-| `spans.kind`                    |       4 |         4 |           4 |
-| `spans.tool_name`               |      22 |        22 |          22 |
-| `spans.tool_call_id`            | 452,658 | 4,499,472 | 448,958,005 |
-| `spans.provider`                |       3 |         3 |           3 |
-| `spans.model`                   |       7 |         7 |           7 |
-| `spans.start_time`              | 991,994 | 9,863,414 | 983,716,507 |
-| `spans.end_time`                | 991,998 | 9,863,507 | 984,679,002 |
-| `spans.first_token_time`        | 427,991 | 4,255,755 | 424,943,344 |
-| `spans.duration_ms`             |  91,353 |   220,923 |   1,170,234 |
-| `spans.status`                  |       2 |         2 |           2 |
-| `spans.error_type`              |      16 |        16 |          16 |
-| `spans.finish_reason`           |       3 |         3 |           3 |
-| `spans.input_tokens`            |  28,022 |    34,729 |      43,172 |
-| `spans.output_tokens`           |   1,471 |     1,471 |       1,471 |
-| `spans.cache_read_tokens`       |  27,033 |    33,832 |      41,966 |
-| `spans.reasoning_tokens`        |   3,878 |     3,901 |       3,901 |
-| `spans.cost_usd`                | 213,935 |   413,353 |     574,243 |
-| `spans.attributes`              | 903,432 | 8,825,744 | 875,832,099 |
-| `spans.input_text`              | 639,695 | 5,679,059 | 444,048,534 |
-| `spans.output_text`             | 640,997 | 4,745,691 | 335,138,748 |
-| `traces.trace_id`               |  99,016 |   985,701 |  98,537,328 |
-| `traces.session_id`             |  55,785 |   557,846 |  55,784,522 |
-| `traces.tenant_id`              |     200 |       200 |         200 |
-| `traces.user_id`                |  18,007 |   175,589 |  17,527,235 |
-| `traces.agent_name`             |       5 |         5 |           5 |
-| `traces.model`                  |       7 |         7 |           7 |
-| `traces.start_time`             |  99,015 |   985,678 |  98,295,935 |
-| `traces.end_time`               |  99,016 |   985,701 |  98,537,067 |
-| `traces.duration_ms`            |  61,584 |   196,175 |   1,170,011 |
-| `traces.status`                 |       2 |         2 |           2 |
-| `traces.llm_calls`              |      30 |        30 |          30 |
-| `traces.tool_calls`             |      45 |        48 |          52 |
-| `traces.input_tokens`           |  42,823 |   157,183 |     586,451 |
-| `traces.output_tokens`          |   7,078 |     9,970 |      11,898 |
-| `traces.cost_usd`               |  91,855 |   641,010 |   9,270,675 |
-| `scores.trace_id`               |  63,686 |   634,391 |  63,358,099 |
-| `scores.name`                   |       3 |         3 |           3 |
-| `scores.value`                  |     101 |       101 |         101 |
-| `scores.label`                  |       5 |         5 |           5 |
-| `scores.created_at`             |  69,887 |   668,734 |  18,445,739 |
-| `tenants.tenant_id`             |     200 |       200 |         200 |
-| `tenants.name`                  |     200 |       200 |         200 |
-| `tenants.tier`                  |       3 |         3 |           3 |
-| `tenants.created_at`            |     198 |       198 |         198 |
-| `model_prices.model`            |       7 |         7 |           7 |
-| `model_prices.valid_from`       |      10 |        10 |          10 |
-| `model_prices.input_price`      |      10 |        10 |          10 |
-| `model_prices.output_price`     |       9 |         9 |           9 |
-| `model_prices.cache_read_price` |       9 |         9 |           9 |
+Measured with DuckDB 1.5 over the parquet in the bucket, with each table a view over `<table>/*.parquet`, by
+`agenttelemetry/workload_profile.py`.
+The distinct values of the columns are in the column tables of [Tables](#tables).
 
 ### Query Profile
 
@@ -375,6 +588,7 @@ From the profile of each query (`EXPLAIN ANALYZE`):
 - **Rows aggregated:** rows into the aggregate operators: grouped, ungrouped and `count(DISTINCT)`.
 - **Rows scanned:** rows of the parquet row groups each table scan reads, after skipping row groups by the min/max
   of its filters, summed over the scans of the query.
+  DuckDB's own `rows_scanned` for parquet counts every row whatever the filter, so it is not used.
 - **Rows joined:** rows into the join operators, both sides, summed over the joins of the query.
   In Q16 the recursive join counts every iteration.
 

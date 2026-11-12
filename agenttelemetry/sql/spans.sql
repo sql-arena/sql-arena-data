@@ -80,13 +80,16 @@ SELECT * EXCLUDE (pool, lines, failed, error_type, error_message),
 FROM _calls;
 
 -- Needles for text search, the same rows at every scale factor: a leaked key in one command's output, an error code in
--- the logs of each day of one week, and a place name with non-ASCII letters in one task (the key is split so secret scanners do not flag the source)
+-- the logs of each day of one week, and a place name with non-ASCII letters in one task (the key is split so secret scanners do not flag the source).
+-- Needles go in the first session of a day that qualifies, so only in the slice of a day from session 0, which holds
+-- them as long as it is at least as large as the day at SF 1.
 UPDATE _calls SET output_text = output_text || chr(10) || 'export PAYMENTS_API_KEY=sk_' || 'live_51HxArena7f3b9c2d4e6a8b0c1d2e3f'
 WHERE ck = (SELECT c.ck FROM _calls c JOIN _traces t USING (tk)
-            WHERE c.tool_name = 'bash' AND c.status = 'OK' AND t.d = 162 AND t.turns > c.t + 1 ORDER BY t.n, t.i, c.t, c.j LIMIT 1);
+            WHERE c.tool_name = 'bash' AND c.status = 'OK' AND t.d = 162 AND t.turns > c.t + 1 AND %%FIRST_SESSION%% = 0 ORDER BY t.n, t.i, c.t, c.j LIMIT 1);
 UPDATE _calls SET output_text = output_text || chr(10) || 'ERROR [billing] ERR_LEDGER_SHARD_7731: ledger shard 7731 rejected write, replica lag 912s'
 WHERE ck IN (SELECT arg_min(c.ck, (t.n, t.i, c.t, c.j)) FROM _calls c JOIN _traces t USING (tk)
-             WHERE c.tool_name = 'query_logs' AND c.status = 'OK' AND t.d BETWEEN 278 AND 284 AND t.turns > c.t + 1 GROUP BY t.d);
+             WHERE c.tool_name = 'query_logs' AND c.status = 'OK' AND t.d BETWEEN 278 AND 284 AND t.turns > c.t + 1
+               AND %%FIRST_SESSION%% = 0 GROUP BY t.d);
 
 -- Sub-agents: 2 to 5 turns of the provider's small model, each but the last calling one tool
 CREATE OR REPLACE TEMP TABLE _sub AS
@@ -125,7 +128,12 @@ SELECT tk, user_task(agent_name, tk) AS task,
 FROM _traces;
 
 UPDATE _prompts SET task = task || ' The customer lives in Ærøskøbing, Denmark.'
-WHERE tk = (SELECT tk FROM _traces WHERE agent_name = 'support-agent' AND d = 33 ORDER BY n, i LIMIT 1);
+WHERE tk = (SELECT tk FROM _traces WHERE agent_name = 'support-agent' AND d = 33 AND %%FIRST_SESSION%% = 0 ORDER BY n, i LIMIT 1);
+-- The needle place of each day, in the day's second support task, as the first may hold the one above
+UPDATE _prompts SET task = task || ' The customer lives in ' || needle_place(n.d) || '.'
+FROM (SELECT tk, d FROM _traces WHERE agent_name = 'support-agent' AND %%FIRST_SESSION%% = 0
+      QUALIFY row_number() OVER (PARTITION BY d ORDER BY n, i) = 2) n
+WHERE _prompts.tk = n.tk;
 
 -- Model calls: each one is sent the whole conversation so far, and providers other than initech cache the earlier
 -- turns. A call fails when the conversation outgrows the model's context, when the provider has an incident, or by
@@ -162,6 +170,16 @@ DELETE FROM _calls c USING _llm l WHERE c.uk = l.uk AND l.error_type IS NOT NULL
 DELETE FROM _calls c WHERE NOT EXISTS (SELECT 1 FROM _llm l WHERE l.uk = c.uk);
 DELETE FROM _sub s WHERE NOT EXISTS (SELECT 1 FROM _calls c WHERE c.ck = s.ck);
 DELETE FROM _sub_calls s WHERE NOT EXISTS (SELECT 1 FROM _calls c WHERE c.ck = s.ck);
+
+-- Needle codes 0 to 3 of each day, in the first tool results of the day that a later model call reads. They go in
+-- after failed turns are gone, so every code is there; their few tokens are not counted in the inputs.
+UPDATE _calls SET output_text = output_text || chr(10) || 'ERROR [gateway] ' || needle_code(n.d, n.slot) || ': upstream rejected the request'
+FROM (SELECT c.ck, t.d, row_number() OVER (PARTITION BY t.d ORDER BY t.n, t.i, c.t, c.j) - 1 AS slot
+      FROM _calls c JOIN _traces t USING (tk)
+      WHERE c.status = 'OK' AND c.tool_name NOT IN ('bash', 'query_logs', 'task')
+        AND EXISTS (SELECT 1 FROM _llm l WHERE l.tk = c.tk AND l.t = c.t + 1) AND %%FIRST_SESSION%% = 0
+      QUALIFY slot < 4) n
+WHERE _calls.ck = n.ck;
 
 -- Sub-agent model calls, which see their task and the earlier turns
 CREATE OR REPLACE TEMP TABLE _sub_llm AS

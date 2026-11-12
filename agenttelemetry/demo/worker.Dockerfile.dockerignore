@@ -1,0 +1,8 @@
+*
+!pyproject.toml
+!uv.lock
+!common/
+!agenttelemetry/
+agenttelemetry/demo/web/
+!agenttelemetry/demo/web/src/lib/server/sql/
+**/__pycache__/

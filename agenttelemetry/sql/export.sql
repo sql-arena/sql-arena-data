@@ -1,6 +1,10 @@
--- The exported tables of a chunk, in time order
+-- The exported tables of a chunk, in time order. The JSON text of spans is exported as VARIANT: the output of a model
+-- call is a JSON message, of other spans plain text, which becomes a VARIANT string.
 CREATE OR REPLACE TABLE _export_spans AS
-SELECT * EXCLUDE (_k, _d, _n, _o) FROM _spans ORDER BY start_time, span_id;
+SELECT * EXCLUDE (_k, _d, _n, _o)
+         REPLACE (attributes::JSON::VARIANT AS attributes, input_text::JSON::VARIANT AS input_text,
+                  CASE WHEN kind = 'llm' THEN output_text::JSON::VARIANT ELSE output_text::VARIANT END AS output_text)
+FROM _spans ORDER BY start_time, span_id;
 
 CREATE OR REPLACE TABLE _export_traces AS
 SELECT r.trace_id, r.session_id, r.tenant_id, r.user_id, r.agent_name, r.environment, r.app_release, t.provider, t.model,

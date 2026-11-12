@@ -1,0 +1,93 @@
+h1 {
+	font-size: var(--size-step-2);
+	line-height: 1.2;
+}
+
+h2 {
+	font-size: var(--size-step-1);
+	line-height: 1.3;
+}
+
+p {
+	max-inline-size: var(--measure);
+}
+
+a {
+	color: var(--color-accent);
+}
+
+code,
+pre {
+	font-family: var(--font-mono);
+	font-size: var(--size-step--1);
+}
+
+pre {
+	overflow-x: auto;
+	padding: var(--space-s);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	background: var(--color-surface-raised);
+	white-space: pre;
+}
+
+.log {
+	max-block-size: 24rem;
+	overflow-y: auto;
+}
+
+dl.key-values {
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: var(--space-2xs) var(--space-m);
+
+	& dt {
+		color: var(--color-text-muted);
+	}
+
+	& dd {
+		font-variant-numeric: tabular-nums;
+	}
+}
+
+.alert {
+	padding: var(--space-s) var(--space-m);
+	border: 1px solid currentColor;
+	border-inline-start-width: 0.35rem;
+	border-radius: var(--radius);
+	max-inline-size: var(--measure);
+}
+
+.alert-error {
+	color: var(--color-danger);
+}
+
+.alert-info {
+	color: var(--color-text-muted);
+}
+
+.status {
+	display: inline-block;
+	padding-inline: var(--space-xs);
+	border: 1px solid currentColor;
+	border-radius: var(--radius);
+	font-size: var(--size-step--1);
+	font-weight: 600;
+}
+
+.status-running,
+.status-planning {
+	color: var(--color-accent);
+}
+
+.status-done {
+	color: var(--color-success);
+}
+
+.status-failed {
+	color: var(--color-danger);
+}
+
+.muted {
+	color: var(--color-text-muted);
+}

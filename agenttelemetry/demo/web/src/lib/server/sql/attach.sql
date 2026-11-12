@@ -1,0 +1,10 @@
+INSTALL aws;
+INSTALL httpfs;
+INSTALL iceberg;
+INSTALL avro;
+LOAD aws;
+LOAD httpfs;
+LOAD iceberg;
+LOAD avro;
+CREATE OR REPLACE SECRET s3tables (TYPE s3, PROVIDER credential_chain, REGION '%%REGION%%');
+ATTACH '%%TABLE_BUCKET_ARN%%' AS s3tables (TYPE iceberg, ENDPOINT_TYPE s3_tables);

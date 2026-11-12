@@ -1,0 +1,40 @@
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+* {
+	margin: 0;
+}
+
+html {
+	-webkit-text-size-adjust: none;
+	text-size-adjust: none;
+}
+
+body {
+	min-block-size: 100vh;
+	background: var(--color-surface);
+	color: var(--color-text);
+	font-family: var(--font-body);
+	font-size: var(--size-step-0);
+	line-height: var(--line-height);
+}
+
+input,
+button,
+textarea,
+select {
+	font: inherit;
+	color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition: none !important;
+		animation: none !important;
+	}
+}

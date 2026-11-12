@@ -1,0 +1,9 @@
+*
+!pyproject.toml
+!uv.lock
+!common/
+!agenttelemetry/
+agenttelemetry/demo/web/node_modules/
+agenttelemetry/demo/web/.svelte-kit/
+agenttelemetry/demo/web/build/
+**/__pycache__/

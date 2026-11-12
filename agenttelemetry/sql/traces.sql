@@ -1,5 +1,5 @@
--- Sessions of days %%FIRST_DAY%% to %%LAST_DAY%%. Session n of a day has the same attributes at every scale factor,
--- which only adds sessions.
+-- Sessions %%FIRST_SESSION%% to %%LAST_SESSION%% - 1 of days %%FIRST_DAY%% to %%LAST_DAY%%. Session n of a day has the
+-- same attributes at every scale factor, which only adds sessions, and in every slice of the day.
 CREATE OR REPLACE TEMP TABLE _sessions AS
 WITH days AS (
     SELECT d, round(%%SF%% * sessions_on(d))::BIGINT AS sessions, extra_support(d) AS extra_support
@@ -7,6 +7,7 @@ WITH days AS (
 ), sessions AS (
     SELECT d, n, n >= sessions AS black_friday, 's|' || d || '|' || n AS k
     FROM (SELECT d, sessions, unnest(range(round(sessions * (1 + extra_support))::BIGINT)) AS n FROM days)
+    WHERE n >= %%FIRST_SESSION%% AND n < %%LAST_SESSION%%
 ), tenants AS (
     SELECT d, n, k, black_friday, bucket(getvariable('tenant_cdf'), rnd('tenant|' || k)) AS drawn FROM sessions
 )

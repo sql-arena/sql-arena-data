@@ -1,0 +1,79 @@
+form {
+	display: grid;
+	gap: var(--space-m);
+}
+
+.form-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: end;
+	gap: var(--space-m);
+}
+
+label {
+	display: grid;
+	gap: var(--space-2xs);
+	font-weight: 600;
+	font-size: var(--size-step--1);
+}
+
+.field-hint {
+	font-weight: 400;
+	color: var(--color-text-muted);
+}
+
+input,
+select,
+textarea {
+	min-block-size: var(--control-height);
+	padding: var(--space-xs) var(--space-s);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius);
+	background: var(--color-surface);
+	font-weight: 400;
+	font-size: var(--size-step-0);
+}
+
+select {
+	max-inline-size: 100%;
+}
+
+textarea.sql {
+	inline-size: 100%;
+	min-block-size: 16rem;
+	font-family: var(--font-mono);
+	font-size: var(--size-step--1);
+	resize: vertical;
+}
+
+button {
+	min-block-size: var(--control-height);
+	padding-inline: var(--space-l);
+	border: 1px solid var(--color-accent);
+	border-radius: var(--radius);
+	background: var(--color-accent);
+	color: var(--color-accent-text);
+	font-weight: 600;
+	cursor: pointer;
+	transition: background var(--transition);
+	justify-self: start;
+
+	&:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--color-accent) 85%, black);
+	}
+
+	&:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+}
+
+button.button-secondary {
+	background: transparent;
+	color: var(--color-accent);
+}
+
+:is(input, select, textarea, button):focus-visible {
+	outline: 2px solid var(--color-accent);
+	outline-offset: 2px;
+}

@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import math
 from pathlib import Path
 
 from common import db, log
@@ -15,7 +16,7 @@ FIRST_DATE = datetime.date(2025, 1, 1)
 DAYS = 365
 
 SESSIONS_PER_DAY = 180  # at SF 1 on a weekday in mid-year, about 100,000 traces a year
-USERS_PER_SF = 20_000
+USERS_AT_SF1 = 20_000  # users grow with the square root of the scale factor
 TENANTS = 200
 # Relative share of a day's sessions in each hour from midnight UTC, busiest when Europe and America overlap
 HOUR_WEIGHTS = [2.0, 1.5, 1.2, 1.0, 1.0, 1.2, 2.0, 3.0, 4.5, 5.5, 6.0, 6.5, 6.5, 7.0, 7.5, 7.5, 7.0, 6.5, 5.5, 4.5,
@@ -24,13 +25,13 @@ DIMENSIONS = ["tenants", "model_prices"]
 FACTS = ["spans", "traces", "scores"]
 # Measured parquet size of the spans of a session, to generate about one target-size spans file per chunk
 BYTES_PER_SESSION = 14_000
+ALL_SESSIONS = 2**62
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("tables", nargs="*", default=DIMENSIONS + FACTS, help="tables to generate, default all")
     parser.add_argument("--sf", type=int, default=1, help="scale factor: about 100,000 agent runs a year each")
     parser.add_argument("--days", type=int, default=DAYS, help=f"days from {FIRST_DATE}, default {DAYS}; fewer for tests")
-    parser.add_argument("--parquet-only", action="store_true", help="no csv.zip copies, for large scale factors")
     parser.add_argument("--shard", type=shard, help="K/N: generate every N-th chunk from chunk K, to run N at once")
     parser.add_argument("--merge-shards", type=int, metavar="N",
                         help="combine the manifests of N complete shards, instead of generating")
@@ -58,6 +59,33 @@ def day_range(first: int, last: int) -> str:
     return f"{FIRST_DATE + datetime.timedelta(days=first)} to {FIRST_DATE + datetime.timedelta(days=last)}"
 
 
+def generator_params(sf: int, days: int) -> dict:
+    return dict(
+        SF=sf, DAYS=days, FIRST_DATE=FIRST_DATE, SESSIONS_PER_DAY=SESSIONS_PER_DAY, TENANTS=TENANTS,
+        USERS=round(math.sqrt(sf) * USERS_AT_SF1), HOUR_WEIGHTS=HOUR_WEIGHTS,
+    )
+
+
+def setup(con, params: dict) -> None:
+    db.execute(con, SQL_DIR / "setup.sql", **params)
+    db.execute(con, SQL_DIR / "needles.sql")
+
+
+def generate_chunk(con, params: dict, first: int, last: int, sessions: tuple[int, int] = (0, ALL_SESSIONS)) -> None:
+    """Fill the _export_<fact> tables with the days first to last, of their sessions sessions[0] to sessions[1] - 1.
+
+    A slice of a day that does not start at session 0 has none of the needles that go in the first sessions of a day.
+    """
+    for sql in ["traces.sql", "spans.sql", "scores.sql", "export.sql"]:
+        db.execute(con, SQL_DIR / sql, **params, FIRST_DAY=first, LAST_DAY=last,
+                   FIRST_SESSION=sessions[0], LAST_SESSION=sessions[1])
+
+
+def day_sessions(con, params: dict) -> list[int]:
+    """Sessions of each day, exactly as traces.sql makes them."""
+    return [n for (n,) in db.fetch_all(con, SQL_DIR / "day_sessions.sql", **params)]
+
+
 def generate(bucket: Bucket, args: argparse.Namespace) -> None:
     unknown = set(args.tables) - set(DIMENSIONS) - set(FACTS)
     if unknown:
@@ -70,15 +98,11 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         publish_checked_in(bucket, prefix)
     if args.checked_in_only:
         return
-    params = dict(
-        SF=args.sf, DAYS=args.days, FIRST_DATE=FIRST_DATE, SESSIONS_PER_DAY=SESSIONS_PER_DAY, TENANTS=TENANTS,
-        USERS=args.sf * USERS_PER_SF, HOUR_WEIGHTS=HOUR_WEIGHTS,
-    )
+    params = generator_params(args.sf, args.days)
     con = db.connect()
-    db.execute(con, SQL_DIR / "setup.sql", **params)
-    settings = {"days": args.days} | ({"csv": False} if args.parquet_only else {})
-    csv = not args.parquet_only
-    exporter = Exporter(con, bucket, prefix, args.target_mb, settings, csv=csv)
+    setup(con, params)
+    settings = {"days": args.days, "csv": False}
+    exporter = Exporter(con, bucket, prefix, args.target_mb, settings, csv=False)
 
     if args.merge_shards:
         pending = [t for t in FACTS if t in args.tables and not exporter.table(t).merge_shards(args.merge_shards)]
@@ -92,7 +116,7 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
             if table in args.tables:
                 exporter.export(table, f"_export_{table}")
 
-    shard_exporter = Exporter(con, bucket, prefix, args.target_mb, settings, csv=csv, shard=args.shard)
+    shard_exporter = Exporter(con, bucket, prefix, args.target_mb, settings, csv=False, shard=args.shard)
     exports = {t: shard_exporter.table(t) for t in FACTS if t in args.tables}
     exports = {t: e for t, e in exports.items() if not e.complete}
     sessions = [n for (n,) in db.fetch_all(con, SQL_DIR / "days.sql", **params)]
@@ -106,8 +130,7 @@ def generate(bucket: Bucket, args: argparse.Namespace) -> None:
         if all(e.chunk_done(name) for e in exports.values()):
             continue
         log(f"{prefix}: generating {name}")
-        for sql in ["traces.sql", "spans.sql", "scores.sql", "export.sql"]:
-            db.execute(con, SQL_DIR / sql, **params, FIRST_DAY=first, LAST_DAY=last)
+        generate_chunk(con, params, first, last)
         for table, export in exports.items():
             stem = f"{table}_{first:03}" if args.shard else None
             export.write(f"_export_{table}", name, single_chunk=len(chunks) == 1, stem=stem)
